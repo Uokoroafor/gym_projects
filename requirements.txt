@@ -1,0 +1,10 @@
+numpy==1.23.3
+torch==1.12.1
+pandas==1.4.4
+matplotlib==3.6.0
+scikit-learn==1.1.2
+gym>=0.26.2
+envs>=1.4
+pygame>=2.1.2
+box2D-py==2.3.8
+swig==4.1.1
