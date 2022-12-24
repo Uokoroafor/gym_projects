@@ -163,10 +163,168 @@ class ReplayBuffer:
 
 
 class Agent:
+    def __init__(self, env):
+        """Object for a DQN based agent"""
+        self.policy_dqn = None
+        self.env = env
+        self.target_dqn = None
 
-    def __init__(self):
-        """Aim is to OOP-ify all these"""
-        pass
+    def train_agent(self, dqn_params, replay_buffer, episodes, epsilon, epsilon_end=0.01, eps_decay=1,
+                    update_frequency=10, batch_size=32, clip_rewards=False):
+        """Trains the dqn
+            Returns:
+                Greedy action according to DQN
+            """
+
+        self.policy_dqn = DQN(**dqn_params)
+        self.target_dqn = DQN(**dqn_params)
+        self.update_target()
+        self.target_dqn.eval()
+
+        optimizer = self.policy_dqn.optim
+        memory = ReplayBuffer(replay_buffer)
+
+        episode_durations = []
+        episode_rewards = []
+
+        for i_episode in range(episodes):
+            if (i_episode + 1) % (episodes / 10) == 0:
+                print("episode ", i_episode + 1, "/", episodes)
+
+            observation, info = self.env.reset()
+            state = torch.tensor(observation).float()
+
+            done = False
+            terminated = False
+            t = 0
+            episode_reward = 0
+
+            if epsilon > epsilon_end:
+                epsilon *= eps_decay
+                epsilon = max(epsilon_end, epsilon)
+
+            while not (done or terminated):
+
+                # Select and perform an action
+                action = epsilon_greedy(epsilon, self.policy_dqn, state)
+
+                observation, reward, done, terminated, info = self.env.step(action)
+                episode_reward += reward
+                if clip_rewards:
+                    reward = clip_reward(reward)
+
+                reward = torch.tensor([reward])
+                action = torch.tensor([action])
+                next_state = torch.tensor(observation).reshape(-1).float()
+
+                memory.push([state, action, next_state, reward, torch.tensor([done])])
+                # Move to the next state
+                state = next_state
+
+                # Perform one step of the optimization (on the policy network)
+                if not len(memory.buffer) < batch_size:
+                    transitions = memory.sample(batch_size)
+                    state_batch, action_batch, nextstate_batch, reward_batch, dones = (torch.stack(x) for x in zip(*transitions))
+                    # Compute loss
+                    mse_loss = self.loss(state_batch, action_batch, reward_batch,nextstate_batch,dones)
+                    # Optimize the model
+                    optimizer.zero_grad()
+                    mse_loss.backward()
+                    optimizer.step()
+
+                if done or terminated:
+                    episode_durations.append(t + 1)
+                    episode_rewards.append(episode_reward)
+                t += 1
+
+            # Update the target dqn, copying all weights and biases in DQN
+            if i_episode % update_frequency == 0:
+                self.update_target()
+
+        print("Training is complete")
+
+        return dict(runs_results=episode_durations, runs_rewards=episode_rewards)
+
+    def update_target(self):
+        """Update target network parameters using policy network.
+
+        Args:
+            target_dqn: target network to be modified in-place
+            policy_dqn: the DQN that selects the action
+        """
+
+        self.target_dqn.load_state_dict(self.policy_dqn.state_dict())
+
+    @staticmethod
+    def greedy_action(dqn, state):
+        """Select action according to a given DQN
+
+        Args:
+            dqn: the DQN that selects the action
+            state: state at which the action is chosen
+
+        Returns:
+            Greedy action according to DQN
+        """
+        return int(torch.argmax(dqn(state)))
+
+    @staticmethod
+    def epsilon_greedy(epsilon, dqn, state):
+        """Sample an epsilon-greedy action according to a given DQN
+
+        Args:
+            epsilon: parameter for epsilon-greedy action selection
+            dqn: the DQN that selects the action
+            state: state at which the action is chosen
+
+        Returns:
+            epsilon-greedy action
+        """
+        q_values = dqn(state)
+        num_actions = q_values.shape[0]
+        p = random.random()
+        if p > epsilon:
+            return greedy_action(dqn, state)
+        else:
+            return random.randint(0, num_actions - 1)
+
+    def loss(self, states, actions, rewards, next_states, dones, is_DQN=True):
+        """Calculate Bellman error loss
+
+        Args:
+            policy_dqn: policy DQN
+            target_dqn: target DQN
+            states: batched state tensor
+            actions: batched action tensor
+            rewards: batched rewards tensor
+            next_states: batched next states tensor
+            dones: batched Boolean tensor, True when episode terminates
+            is_DQN (bool): True if policy is a DQN
+
+        Returns:
+            Float scalar tensor with loss value
+        """
+        if is_DQN:
+            bellman_targets = (~dones).reshape(-1) * (self.target_dqn(next_states)).max(1).values + rewards.reshape(-1)
+            q_values = self.policy_dqn(states).gather(1, actions).reshape(-1)
+        elif not is_DQN:
+            # The above code first determines the ideal actions using the policy network,
+            # and then computes their Q Values using the target network
+            policy_dqn_actions = self.policy_dqn(next_states).max(1).indices.reshape([-1, 1])
+            Q_vals = self.target_dqn(next_states).gather(1, policy_dqn_actions).reshape(-1)
+            bellman_targets = (~dones).reshape(-1) * Q_vals + rewards.reshape(-1)
+            q_values = self.policy_dqn(states).gather(1, actions).reshape(-1)
+
+        return ((q_values - bellman_targets) ** 2).mean()
+
+    @staticmethod
+    def clip_reward(reward, a=-1, b=1):
+        if reward < a:
+            return a
+        elif reward > b:
+            return b
+        else:
+            return reward
 
 
 def train_agent(env, num_runs, dqn_params, replay_buffer, episodes, epsilon, epsilon_end=0.01, eps_decay=1,
@@ -322,7 +480,6 @@ def loss(policy_dqn, target_dqn, states, actions, rewards, next_states, dones, i
         Q_vals = target_dqn(next_states).gather(1, policy_dqn_actions).reshape(-1)
         bellman_targets = (~dones).reshape(-1) * Q_vals + rewards.reshape(-1)
         q_values = policy_dqn(states).gather(1, actions).reshape(-1)
-
 
     return ((q_values - bellman_targets) ** 2).mean()
 
