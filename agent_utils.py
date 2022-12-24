@@ -164,10 +164,17 @@ class ReplayBuffer:
 
 class Agent:
     def __init__(self, env):
-        """Object for a DQN based agent"""
+        """Object for a DQN based agent
+
+        Args:
+            env (object): 
+        """
+        self.training_dict = None
         self.policy_dqn = None
         self.env = env
         self.target_dqn = None
+        self.label='DQN Agent'
+        self.threshold=self.env.spec.reward_threshold
 
     def train_agent(self, dqn_params, replay_buffer, episodes, epsilon, epsilon_end=0.01, eps_decay=1,
                     update_frequency=10, batch_size=32, clip_rewards=False):
@@ -224,9 +231,10 @@ class Agent:
                 # Perform one step of the optimization (on the policy network)
                 if not len(memory.buffer) < batch_size:
                     transitions = memory.sample(batch_size)
-                    state_batch, action_batch, nextstate_batch, reward_batch, dones = (torch.stack(x) for x in zip(*transitions))
+                    state_batch, action_batch, nextstate_batch, reward_batch, dones = (torch.stack(x) for x in
+                                                                                       zip(*transitions))
                     # Compute loss
-                    mse_loss = self.loss(state_batch, action_batch, reward_batch,nextstate_batch,dones)
+                    mse_loss = self.loss(state_batch, action_batch, reward_batch, nextstate_batch, dones)
                     # Optimize the model
                     optimizer.zero_grad()
                     mse_loss.backward()
@@ -242,8 +250,45 @@ class Agent:
                 self.update_target()
 
         print("Training is complete")
+        self.training_dict = dict(episode_durations=episode_durations, episode_rewards=episode_rewards)
 
-        return dict(runs_results=episode_durations, runs_rewards=episode_rewards)
+    def evaluate_agent(self, episodes, plots=True):
+        """Evaluates performance of Trained Agent over a number of episodes
+            Returns:
+                Greedy action according to DQN
+            """
+
+        episode_durations = []
+        episode_rewards = []
+
+        for i_episode in range(episodes):
+            if (i_episode + 1) % (episodes / 10) == 0:
+                print("episode ", i_episode + 1, "/", episodes)
+
+            observation, info = self.env.reset()
+            state = torch.tensor(observation).float()
+
+            done = False
+            terminated = False
+            t = 0
+            episode_reward = 0
+
+            while not (done or terminated):
+
+                # Select and perform an action
+                action = greedy_action(epsilon, self.policy_dqn, state)
+
+                observation, reward, done, terminated, info = self.env.step(action)
+                episode_reward += reward
+
+                if done or terminated:
+                    episode_durations.append(t + 1)
+                    episode_rewards.append(episode_reward)
+                t += 1
+        if plots:
+            self.plot_episodes(episode_rewards)
+
+        return dict(episode_durations=episode_durations, episode_rewards=episode_rewards)
 
     def update_target(self):
         """Update target network parameters using policy network.
@@ -325,6 +370,20 @@ class Agent:
             return b
         else:
             return reward
+
+    def plot_episodes(self, episode_stats):
+        rewards = torch.tensor(episode_stats)
+        means = rewards.float().mean(0)
+        stds = rewards.float().std(0)
+
+        plt.plot(torch.arange(episodes), means, label=self.label, color='g')
+        plt.ylabel("score")
+        plt.xlabel("episode")
+        plt.fill_between(np.arange(episodes), means, means + stds, alpha=0.3, color='g')
+        plt.fill_between(np.arange(episodes), means, means - stds, alpha=0.3, color='g')
+        plt.axhline(y=self.threshold, color='r', linestyle='dashed', label='Solved')
+        plt.legend()
+        plt.show()
 
 
 def train_agent(env, num_runs, dqn_params, replay_buffer, episodes, epsilon, epsilon_end=0.01, eps_decay=1,
