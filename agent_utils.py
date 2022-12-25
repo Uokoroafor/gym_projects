@@ -9,6 +9,7 @@ from sklearn.metrics import mean_squared_error
 from torch import nn
 from torch.optim import Adam, SGD, Adagrad
 from torch.utils.data import DataLoader, TensorDataset
+import imageio
 
 
 class DQN(nn.Module):
@@ -173,30 +174,47 @@ class Agent:
         self.policy_dqn = None
         self.env = env
         self.target_dqn = None
-        self.label='DQN Agent'
-        self.threshold=self.env.spec.reward_threshold
+        self.label = 'DQN Agent'
+        self.threshold = self.env.spec.reward_threshold
 
     def train_agent(self, dqn_params, replay_buffer, episodes, epsilon, epsilon_end=0.01, eps_decay=1,
-                    update_frequency=10, batch_size=32, clip_rewards=False):
-        """Trains the dqn
+                    update_frequency=10, batch_size=32, clip_rewards=False, show_time=False):
+        """Trains the dqn using the DQN parameters
+            Args:
+                show_time (bool):
+                update_frequency (int):
+                eps_decay (float):
+                epsilon_end (float):
+                epsilon (float):
+                episodes (int):
+                replay_buffer (int):
+                clip_rewards (bool):
+                dqn_params (mapping):
+
             Returns:
-                Greedy action according to DQN
+                self.training_dict(dict): Dictionary with some episode rewards and durations
             """
+        if show_time:
+            strt = time.time()
 
         self.policy_dqn = DQN(**dqn_params)
         self.target_dqn = DQN(**dqn_params)
         self.update_target()
         self.target_dqn.eval()
+        # print(self.policy_dqn.state_dict())
 
         optimizer = self.policy_dqn.optim
         memory = ReplayBuffer(replay_buffer)
 
         episode_durations = []
         episode_rewards = []
+        scores_window = deque(maxlen=100)
+
+        print('Training Agent...')
 
         for i_episode in range(episodes):
             if (i_episode + 1) % (episodes / 10) == 0:
-                print("episode ", i_episode + 1, "/", episodes)
+                print("episode ", i_episode + 1, "of", episodes)
 
             observation, info = self.env.reset()
             state = torch.tensor(observation).float()
@@ -243,14 +261,28 @@ class Agent:
                 if done or terminated:
                     episode_durations.append(t + 1)
                     episode_rewards.append(episode_reward)
+                    scores_window.append(episode_reward)
+
                 t += 1
 
             # Update the target dqn, copying all weights and biases in DQN
             if i_episode % update_frequency == 0:
                 self.update_target()
 
+            # Check if solved threshold has been reached
+            if np.mean(scores_window) >= self.threshold:
+                print(f'Environment solved within {i_episode + 1} episodes.')
+                print(f'Average Score: {np.mean(scores_window)}')
+                break
+
         print("Training is complete")
+        if show_time:
+            endt = time.time()
+            self.print_time(strt, endt)
+
+        # print(self.policy_dqn.state_dict())
         self.training_dict = dict(episode_durations=episode_durations, episode_rewards=episode_rewards)
+        return self.training_dict
 
     def evaluate_agent(self, episodes, plots=True):
         """Evaluates performance of Trained Agent over a number of episodes
@@ -260,10 +292,12 @@ class Agent:
 
         episode_durations = []
         episode_rewards = []
+        # print(self.policy_dqn.state_dict())
+        print("Evaluating Trained Agent...")
 
         for i_episode in range(episodes):
             if (i_episode + 1) % (episodes / 10) == 0:
-                print("episode ", i_episode + 1, "/", episodes)
+                print("episode ", i_episode + 1, "of", episodes)
 
             observation, info = self.env.reset()
             state = torch.tensor(observation).float()
@@ -272,11 +306,14 @@ class Agent:
             terminated = False
             t = 0
             episode_reward = 0
+            frames = []
 
             while not (done or terminated):
+                # frames.append(self.env.render(render_mode='rgb_array'))
+                frames.append(self.env.render())
 
                 # Select and perform an action
-                action = greedy_action(epsilon, self.policy_dqn, state)
+                action = greedy_action(self.policy_dqn, state)
 
                 observation, reward, done, terminated, info = self.env.step(action)
                 episode_reward += reward
@@ -284,6 +321,9 @@ class Agent:
                 if done or terminated:
                     episode_durations.append(t + 1)
                     episode_rewards.append(episode_reward)
+                    # Save the frames as a gif
+                    imageio.mimsave('images/evaluations_' + str(i_episode+1) + '.gif', frames, fps=5)
+
                 t += 1
         if plots:
             self.plot_episodes(episode_rewards)
@@ -337,8 +377,6 @@ class Agent:
         """Calculate Bellman error loss
 
         Args:
-            policy_dqn: policy DQN
-            target_dqn: target DQN
             states: batched state tensor
             actions: batched action tensor
             rewards: batched rewards tensor
@@ -373,17 +411,32 @@ class Agent:
 
     def plot_episodes(self, episode_stats):
         rewards = torch.tensor(episode_stats)
-        means = rewards.float().mean(0)
-        stds = rewards.float().std(0)
+        means = rewards.float()
+        # stds = rewards.float().std(0)
 
-        plt.plot(torch.arange(episodes), means, label=self.label, color='g')
+        plt.plot(torch.arange(len(means)), means, label=self.label, color='g')
         plt.ylabel("score")
         plt.xlabel("episode")
-        plt.fill_between(np.arange(episodes), means, means + stds, alpha=0.3, color='g')
-        plt.fill_between(np.arange(episodes), means, means - stds, alpha=0.3, color='g')
-        plt.axhline(y=self.threshold, color='r', linestyle='dashed', label='Solved')
+        # plt.fill_between(np.arange(episodes), means, means + stds, alpha=0.3, color='g')
+        # plt.fill_between(np.arange(episodes), means, means - stds, alpha=0.3, color='g')
+        plt.axhline(y=self.threshold, color='r', linestyle='dashed', label='Solved Threshold')
         plt.legend()
         plt.show()
+
+    @staticmethod
+    def print_time(strt, endt):
+        # get the execution time
+        elapsed_ = endt - strt
+        hours = elapsed_ // (60 * 60)
+        minutes = (elapsed_ % (60 * 60)) // 60
+        seconds = elapsed_ % 60
+        str_time = ''
+        if hours > 0:
+            str_time += str(hours) + ' hours, '
+        if minutes > 0:
+            str_time += str(minutes) + ' minutes, '
+        str_time += str(seconds) + ' seconds.'
+        print('Execution time: ' + str_time)
 
 
 def train_agent(env, num_runs, dqn_params, replay_buffer, episodes, epsilon, epsilon_end=0.01, eps_decay=1,
@@ -554,16 +607,19 @@ def clip_reward(reward, a=-1, b=1):
 
 if __name__ == '__main__':
     # env = gym.make("LunarLander-v2", render_mode="human")
-    env = gym.make("LunarLander-v2")
+    env = gym.make("LunarLander-v2", render_mode='rgb_array')
+
     input_size = env.observation_space.shape[0]
     output_size = env.action_space.n
+
+    dqn_agent = Agent(env)
 
     # DQN Parameters
     layers = [input_size, 64, 64, output_size]  # DQN Architecture
     activation = 'relu'
-    weights = 'xunif'
+    weights = 'xnorm'
     optim = 'Adam'
-    learning_rate = 1e-4
+    learning_rate = 5e-4
     dqn_params = dict(layers=layers, activation=activation, weights=weights, optim=optim, learning_rate=learning_rate)
 
     # Training Parameters
@@ -575,39 +631,25 @@ if __name__ == '__main__':
     epsilon_end = 0.01
     episodes = 1000
     update_frequency = 5
-    clip_rewards = True
+    clip_rewards = False
 
-    training_params = dict(num_runs=num_runs, epsilon=epsilon, eps_decay=eps_decay, replay_buffer=replay_buffer,
+    training_params = dict(epsilon=epsilon, eps_decay=eps_decay, replay_buffer=replay_buffer,
                            batch_size=batch_size, epsilon_end=epsilon_end, episodes=episodes,
                            update_frequency=update_frequency, dqn_params=dqn_params, clip_rewards=clip_rewards)
-    # get the start time
-    st = time.time()
 
-    run_stats = train_agent(env, **training_params)
+    run_stats = dqn_agent.train_agent(show_time=True, **training_params)
+    dqn_agent.plot_episodes(run_stats['episode_rewards'])
+    dqn_agent.evaluate_agent(10, plots=True)
 
-    # get the end time
-    et = time.time()
+    """rewards = torch.tensor(run_stats['episode_rewards'])
+    means = rewards.float()
+    #stds = rewards.float()
 
-    # get the execution time
-    elapsed_ = et - st
-    hours = elapsed_ // (60 * 60)
-    minutes = (elapsed_ - 60 * hours) // 60
-    seconds = elapsed_ % 60
-    print(f'Execution time:{hours, minutes, seconds}')
-
-    results = torch.tensor(run_stats['runs_results'])
-    rewards = torch.tensor(run_stats['runs_rewards'])
-    means = rewards.float().mean(0)
-    stds = rewards.float().std(0)
-
-    plt.plot(torch.arange(episodes), means, label='DQN Agent', color='g')
+    plt.plot(torch.arange(episodes), means, label=dqn_agent.label, color='g')
     plt.ylabel("score")
     plt.xlabel("episode")
-    plt.fill_between(np.arange(episodes), means, means + stds, alpha=0.3, color='g')
-    plt.fill_between(np.arange(episodes), means, means - stds, alpha=0.3, color='g')
-    plt.axhline(y=200, color='r', linestyle='dashed', label='Solved')
+    #plt.fill_between(np.arange(episodes), means, means + stds, alpha=0.3, color='g')
+    #plt.fill_between(np.arange(episodes), means, means - stds, alpha=0.3, color='g')
+    plt.axhline(y=dqn_agent.threshold, color='r', linestyle='dashed', label='Solved')
     plt.legend()
-    plt.show()
-
-    if means[-100:].mean(0) >= 200.0:
-        torch.save(run_stats['policy_dqn'].state_dict(), 'saved_agents/agent_1.pt')
+    plt.show()"""
