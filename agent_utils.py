@@ -284,7 +284,7 @@ class Agent:
         self.training_dict = dict(episode_durations=episode_durations, episode_rewards=episode_rewards)
         return self.training_dict
 
-    def evaluate_agent(self, episodes, plots=True):
+    def evaluate_agent(self, episodes, plots=True, save_every=1):
         """Evaluates performance of Trained Agent over a number of episodes
             Returns:
                 Greedy action according to DQN
@@ -313,7 +313,8 @@ class Agent:
                 frames.append(self.env.render())
 
                 # Select and perform an action
-                action = greedy_action(self.policy_dqn, state)
+                with torch.no_grad():
+                    action = greedy_action(self.policy_dqn, state)
 
                 observation, reward, done, terminated, info = self.env.step(action)
                 episode_reward += reward
@@ -321,8 +322,11 @@ class Agent:
                 if done or terminated:
                     episode_durations.append(t + 1)
                     episode_rewards.append(episode_reward)
-                    # Save the frames as a gif
-                    imageio.mimsave('images/evaluations_' + str(i_episode+1) + '.gif', frames, fps=5)
+                    print(f'{i_episode} with reward {episode_reward}')
+
+                    if ((i_episode + 1) % save_every) == 0:
+                        # Save the frames as a gif
+                        imageio.mimsave('images/evaluations_' + str(i_episode + 1) + '.gif', frames, fps=15)
 
                 t += 1
         if plots:
@@ -615,11 +619,11 @@ if __name__ == '__main__':
     dqn_agent = Agent(env)
 
     # DQN Parameters
-    layers = [input_size, 64, 64, output_size]  # DQN Architecture
+    layers = [input_size, 128, 128, output_size]  # DQN Architecture
     activation = 'relu'
-    weights = 'xnorm'
+    weights = 'xunif'
     optim = 'Adam'
-    learning_rate = 5e-4
+    learning_rate = 1e-5
     dqn_params = dict(layers=layers, activation=activation, weights=weights, optim=optim, learning_rate=learning_rate)
 
     # Training Parameters
@@ -627,8 +631,8 @@ if __name__ == '__main__':
     epsilon = 1
     eps_decay = 0.995  # Epsilon is reduced by 1-eps_decay every episode
     replay_buffer = 100000
-    batch_size = 128
-    epsilon_end = 0.01
+    batch_size = 64
+    epsilon_end = 0.05
     episodes = 1000
     update_frequency = 5
     clip_rewards = False
@@ -639,7 +643,7 @@ if __name__ == '__main__':
 
     run_stats = dqn_agent.train_agent(show_time=True, **training_params)
     dqn_agent.plot_episodes(run_stats['episode_rewards'])
-    dqn_agent.evaluate_agent(10, plots=True)
+    dqn_agent.evaluate_agent(100, plots=True,save_every=10)
 
     """rewards = torch.tensor(run_stats['episode_rewards'])
     means = rewards.float()
