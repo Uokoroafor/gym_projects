@@ -10,11 +10,13 @@ from torch import nn
 from torch.optim import Adam, SGD, Adagrad
 from torch.utils.data import DataLoader, TensorDataset
 import imageio
+import torch.nn.functional as F
+from copy import deepcopy
 
 
 class DQN(nn.Module):
     def __init__(self, activation, layers, weights='xunif', optim='Adam', learning_rate=1e-3):
-        super().__init__()
+        super(DQN, self).__init__()
         self.layers = layers
         assert len(self.layers) >= 2, "There needs to be at least an input and output "
         self.layer_list = []
@@ -59,74 +61,19 @@ class DQN(nn.Module):
         nn.init.zeros_(layer.bias)
 
     def apply_layers(self):
-        input_layer = nn.Linear(in_features=self.layers[0], out_features=self.layers[1])
-        self.make_weights_bias(input_layer)
-        layer_list = [input_layer]
+        layer_list = []
 
-        if len(self.layers) > 2:
-            for k in range(1, len(self.layers) - 1):
-                layer = nn.Linear(in_features=self.layers[k], out_features=self.layers[k + 1])
-                self.make_weights_bias(layer)
-                layer_list.append(self.activation)
-                layer_list.append(layer)
+        for k in range(len(self.layers) - 1):
+            layer = nn.Linear(in_features=self.layers[k], out_features=self.layers[k + 1])
+            self.make_weights_bias(layer)
+            layer_list.append(layer)
+            layer_list.append(self.activation)
 
         return nn.Sequential(*layer_list)
 
     def forward(self, input):
 
         return self.nn_model(input)
-
-    def get_params(self, deep=True):
-        params = dict(x=self.x, nb_epoch=self.nb_epoch, learning_rate=self.learning_rate, layers=self.layers,
-                      batch_size=self.batch_size, neurons=self.neurons, activation=self.activation,
-                      output_activation=self.output_activation)
-        return params
-
-    def set_params(self, **parameters):
-        for parameter, value in parameters.items():
-            setattr(self, parameter, value)
-        return self
-
-    def predict(self, x):
-        """
-        Outputs the value corresponding to an input x.
-
-        Arguments:
-            x {pd.DataFrame} -- Raw input array of shape
-                (batch_size, input_size).
-
-        Returns:
-            {np.ndarray} -- Predicted value for the given input (batch_size, 1).
-
-        """
-
-        X, _ = self._preprocessor(x, training=False)
-        y_tensor = self.model.forward(X)
-        return y_tensor.detach().numpy()
-
-    def score(self, x, y):
-        """
-        Evaluates the model accuracy on a validation dataset.
-
-        Arguments:
-            - x {pd.DataFrame} -- Raw input array of shape
-                (batch_size, input_size).
-            - y {pd.DataFrame} -- Raw output array of shape (batch_size, 1).
-
-        Returns:
-            {float} -- Quantification of the efficiency of the model.
-
-        """
-
-        X, Y = self._preprocessor(x, y=y, training=False)
-        pred = self.predict(x)
-
-        return np.sqrt(mean_squared_error(pred, y))
-
-    def batch_loader(self, x, y, shuffle=True):
-        dataset = TensorDataset(x, y)
-        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=shuffle)
-        return loader
 
 
 class ReplayBuffer:
@@ -170,6 +117,7 @@ class Agent:
         Args:
             env (object): 
         """
+        self.trained_state_dict = None
         self.training_dict = None
         self.policy_dqn = None
         self.env = env
@@ -192,7 +140,7 @@ class Agent:
                 dqn_params (mapping):
 
             Returns:
-                self.training_dict(dict): Dictionary with some episode rewards and durations
+                self.training_dict(dict): Dictionary with episode rewards and durations
             """
         if show_time:
             strt = time.time()
@@ -223,10 +171,6 @@ class Agent:
             terminated = False
             t = 0
             episode_reward = 0
-
-            if epsilon > epsilon_end:
-                epsilon *= eps_decay
-                epsilon = max(epsilon_end, epsilon)
 
             while not (done or terminated):
 
@@ -273,7 +217,14 @@ class Agent:
             if np.mean(scores_window) >= self.threshold:
                 print(f'Environment solved within {i_episode + 1} episodes.')
                 print(f'Average Score: {np.mean(scores_window)}')
+                # torch.save(self.policy_dqn.state_dict(), 'saved_agent/checkpoint.pth')
+                self.trained_state_dict = deepcopy(self.policy_dqn.state_dict())
                 break
+
+            # Update epsilon
+            if epsilon > epsilon_end:
+                epsilon *= eps_decay
+                epsilon = max(epsilon_end, epsilon)
 
         print("Training is complete")
         if show_time:
@@ -294,7 +245,10 @@ class Agent:
         episode_rewards = []
         # print(self.policy_dqn.state_dict())
         print("Evaluating Trained Agent...")
+        if self.trained_state_dict is not None:
+            self.policy_dqn.load_state_dict(self.trained_state_dict)
 
+        self.policy_dqn.eval()
         for i_episode in range(episodes):
             if (i_episode + 1) % (episodes / 10) == 0:
                 print("episode ", i_episode + 1, "of", episodes)
@@ -307,22 +261,25 @@ class Agent:
             t = 0
             episode_reward = 0
             frames = []
+            rewards = []
 
             while not (done or terminated):
-                # frames.append(self.env.render(render_mode='rgb_array'))
                 frames.append(self.env.render())
 
                 # Select and perform an action
-                with torch.no_grad():
-                    action = greedy_action(self.policy_dqn, state)
+
+                action = greedy_action(self.policy_dqn, state)
 
                 observation, reward, done, terminated, info = self.env.step(action)
                 episode_reward += reward
+                rewards.append(reward)
 
                 if done or terminated:
                     episode_durations.append(t + 1)
                     episode_rewards.append(episode_reward)
-                    print(f'{i_episode} with reward {episode_reward}')
+                    print(f'Episode {i_episode + 1} with reward {episode_reward}')
+                    print(f'{t + 1} steps')
+                    print(rewards)
 
                     if ((i_episode + 1) % save_every) == 0:
                         # Save the frames as a gif
@@ -336,10 +293,6 @@ class Agent:
 
     def update_target(self):
         """Update target network parameters using policy network.
-
-        Args:
-            target_dqn: target network to be modified in-place
-            policy_dqn: the DQN that selects the action
         """
 
         self.target_dqn.load_state_dict(self.policy_dqn.state_dict())
@@ -398,11 +351,12 @@ class Agent:
             # The above code first determines the ideal actions using the policy network,
             # and then computes their Q Values using the target network
             policy_dqn_actions = self.policy_dqn(next_states).max(1).indices.reshape([-1, 1])
-            Q_vals = self.target_dqn(next_states).gather(1, policy_dqn_actions).reshape(-1)
-            bellman_targets = (~dones).reshape(-1) * Q_vals + rewards.reshape(-1)
+            q_vals = self.target_dqn(next_states).gather(1, policy_dqn_actions).reshape(-1)
+            bellman_targets = (~dones).reshape(-1) * q_vals + rewards.reshape(-1)
             q_values = self.policy_dqn(states).gather(1, actions).reshape(-1)
 
         return ((q_values - bellman_targets) ** 2).mean()
+        # return F.mse_loss(q_values, bellman_targets)
 
     @staticmethod
     def clip_reward(reward, a=-1, b=1):
@@ -619,11 +573,11 @@ if __name__ == '__main__':
     dqn_agent = Agent(env)
 
     # DQN Parameters
-    layers = [input_size, 128, 128, output_size]  # DQN Architecture
+    layers = [input_size, 64, 64, output_size]  # DQN Architecture
     activation = 'relu'
     weights = 'xunif'
     optim = 'Adam'
-    learning_rate = 1e-5
+    learning_rate = 5e-3
     dqn_params = dict(layers=layers, activation=activation, weights=weights, optim=optim, learning_rate=learning_rate)
 
     # Training Parameters
@@ -643,7 +597,7 @@ if __name__ == '__main__':
 
     run_stats = dqn_agent.train_agent(show_time=True, **training_params)
     dqn_agent.plot_episodes(run_stats['episode_rewards'])
-    dqn_agent.evaluate_agent(100, plots=True,save_every=10)
+    dqn_agent.evaluate_agent(100, plots=True, save_every=10)
 
     """rewards = torch.tensor(run_stats['episode_rewards'])
     means = rewards.float()
