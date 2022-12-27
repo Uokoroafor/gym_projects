@@ -33,6 +33,7 @@ class Agent:
                     update_frequency=10, batch_size=32, clip_rewards=False, show_time=False):
         """Trains the dqn using the DQN parameters
             Args:
+                batch_size (int):
                 show_time (bool):
                 update_frequency (int):
                 eps_decay (float):
@@ -53,7 +54,6 @@ class Agent:
         self.target_dqn = DQN(**dqn_params)
         self.update_target()
         self.target_dqn.eval()
-        # print(self.policy_dqn.state_dict())
 
         optimizer = self.policy_dqn.optim
         memory = ReplayBuffer(replay_buffer)
@@ -136,17 +136,25 @@ class Agent:
         self.training_dict = dict(episode_durations=episode_durations, episode_rewards=episode_rewards)
         return self.training_dict
 
-    def evaluate_agent(self, episodes, plots=True, save_every=1):
+    def evaluate_agent(self, episodes, plots=True, save_every=None):
         """Evaluates performance of Trained Agent over a number of episodes
-            Returns:
-                Greedy action according to DQN
+            Args:
+                episodes(int): Number of episodes the train agent carries out
+                plots (bool): Plots the score curve for the episodes if true
+                save_every(int or None): x s.t. the rendering gif is saved every x episodes. So 10 means every 10th
+                rendering is saved. If it is None, no rendering is saved
+
             """
 
         episode_durations = []
         episode_rewards = []
-        # print(self.policy_dqn.state_dict())
+
+        # Set save_every so that it is not a divisor for any number in range(episodes)
+        if save_every is None:
+            save_every = episodes + 2
         print("Evaluating Trained Agent...")
 
+        # Turn off train mode
         self.policy_dqn.eval()
         for i_episode in range(episodes):
             if (i_episode + 1) % (episodes / 10) == 0:
@@ -166,7 +174,6 @@ class Agent:
                 frames.append(self.env.render())
 
                 # Select and perform an action
-
                 action = self.greedy_action(self.policy_dqn, state)
 
                 observation, reward, done, terminated, info = self.env.step(action)
@@ -184,18 +191,27 @@ class Agent:
                     print(f'{t + 1} steps')
 
                     if ((i_episode + 1) % save_every) == 0:
-                        folder_name = 'images/' + self.env.unwrapped.spec.id
-                        self.check_path_exists(folder_name)
-
-                        imageio.mimsave(str(folder_name) + '/' + time.strftime("%y%m%d_%H%M") + 'evaluations_' + str(
-                            i_episode + 1) + '.gif', frames,
-                                        fps=15)
+                        self.save_render(frames, i_episode)
 
                 t += 1
         if plots:
             self.plot_episodes(episode_rewards)
 
         return dict(episode_durations=episode_durations, episode_rewards=episode_rewards)
+
+    def save_render(self, frames, i_episode, mode='eval'):
+        folder_name = 'images/' + self.env.unwrapped.spec.id
+        self.check_path_exists(folder_name)
+
+        if mode == 'eval':
+            mode = 'evaluations_'
+        else:
+            mode = 'training_'
+
+        imageio.mimsave(
+            str(folder_name) + '/' + mode + str(i_episode + 1) + '_' + time.strftime("%y%m%d_%H%M") + '.gif',
+            frames, fps=15)
+        pass
 
     @staticmethod
     def check_path_exists(path):
@@ -244,7 +260,7 @@ class Agent:
         else:
             return random.randint(0, num_actions - 1)
 
-    def loss(self, states, actions, rewards, next_states, dones, is_DQN=True):
+    def loss(self, states, actions, rewards, next_states, dones):
         """Calculate Bellman error loss
 
         Args:
@@ -253,24 +269,15 @@ class Agent:
             rewards: batched rewards tensor
             next_states: batched next states tensor
             dones: batched Boolean tensor, True when episode terminates
-            is_DQN (bool): True if policy is a DQN
 
         Returns:
             Float scalar tensor with loss value
         """
-        if is_DQN:
-            bellman_targets = (~dones).reshape(-1) * (self.target_dqn(next_states)).max(1).values + rewards.reshape(-1)
-            q_values = self.policy_dqn(states).gather(1, actions).reshape(-1)
-        elif not is_DQN:
-            # The above code first determines the ideal actions using the policy network,
-            # and then computes their Q Values using the target network
-            policy_dqn_actions = self.policy_dqn(next_states).max(1).indices.reshape([-1, 1])
-            q_vals = self.target_dqn(next_states).gather(1, policy_dqn_actions).reshape(-1)
-            bellman_targets = (~dones).reshape(-1) * q_vals + rewards.reshape(-1)
-            q_values = self.policy_dqn(states).gather(1, actions).reshape(-1)
+
+        bellman_targets = (~dones).reshape(-1) * (self.target_dqn(next_states)).max(1).values + rewards.reshape(-1)
+        q_values = self.policy_dqn(states).gather(1, actions).reshape(-1)
 
         return ((q_values - bellman_targets) ** 2).mean()
-        # return F.mse_loss(q_values, bellman_targets)
 
     @staticmethod
     def clip_reward(reward, a=-10, b=10):
@@ -310,9 +317,37 @@ class Agent:
         str_time += str(seconds) + ' seconds.'
         print('Execution time: ' + str_time)
 
-class DDQN_Agent(Agent):
-    def __init__(self):
-        pass
+
+class DDQNAgent(Agent):
+    def __init__(self, env, reward_threshold=None):
+        super(Agent, self).__init__(env=env, reward_threshold=reward_threshold)
+        self.label = 'DDQN Agent'
+
+    def loss(self, states, actions, rewards, next_states, dones):
+        """Calculate Bellman error loss
+
+        Args:
+            states: batched state tensor
+            actions: batched action tensor
+            rewards: batched rewards tensor
+            next_states: batched next states tensor
+            dones: batched Boolean tensor, True when episode terminates
+
+
+        Returns:
+            Float scalar tensor with loss value
+        """
+
+        # The below code first determines the ideal actions using the policy network,
+        # and then computes their Q Values using the target network
+
+        policy_dqn_actions = self.policy_dqn(next_states).max(1).indices.reshape([-1, 1])
+        q_vals = self.target_dqn(next_states).gather(1, policy_dqn_actions).reshape(-1)
+        bellman_targets = (~dones).reshape(-1) * q_vals + rewards.reshape(-1)
+        q_values = self.policy_dqn(states).gather(1, actions).reshape(-1)
+
+        return ((q_values - bellman_targets) ** 2).mean()
+
 
 def dqn_example():
     env = gym.make("LunarLander-v2", render_mode='rgb_array')
@@ -348,18 +383,41 @@ def dqn_example():
     # dqn_agent.evaluate_agent(10, plots=True, save_every=10)
 
 
+def ddqn_example():
+    env = gym.make("LunarLander-v2", render_mode='rgb_array')
+    ddqn_agent = DDQNAgent(env)
+
+    input_size = env.observation_space.shape[0]
+    output_size = env.action_space.n
+
+    # DDQN Parameters
+    layers = [input_size, 128, 128, output_size]  # DQN Architecture
+    activation = 'relu'
+    weights = 'xunif'
+    optim = 'Adam'
+    learning_rate = 5e-4
+    dqn_params = dict(layers=layers, activation=activation, weights=weights, optim=optim, learning_rate=learning_rate)
+
+    # Training Parameters
+    epsilon = 1
+    eps_decay = 0.995  
+    replay_buffer = 100000
+    batch_size = 64
+    epsilon_end = 0.01
+    episodes = 100
+    update_frequency = 5
+    clip_rewards = False
+
+    training_params = dict(epsilon=epsilon, eps_decay=eps_decay, replay_buffer=replay_buffer,
+                           batch_size=batch_size, epsilon_end=epsilon_end, episodes=episodes,
+                           update_frequency=update_frequency, dqn_params=dqn_params, clip_rewards=clip_rewards)
+
+    run_stats = ddqn_agent.train_agent(show_time=True, **training_params)
+    ddqn_agent.plot_episodes(run_stats['episode_rewards'])
+    # dqn_agent.evaluate_agent(10, plots=True, save_every=10)
+
+
 if __name__ == '__main__':
     dqn_example()
+    ddqn_example()
 
-    """rewards = torch.tensor(run_stats['episode_rewards'])
-    means = rewards.float()
-    #stds = rewards.float()
-
-    plt.plot(torch.arange(episodes), means, label=dqn_agent.label, color='g')
-    plt.ylabel("score")
-    plt.xlabel("episode")
-    #plt.fill_between(np.arange(episodes), means, means + stds, alpha=0.3, color='g')
-    #plt.fill_between(np.arange(episodes), means, means - stds, alpha=0.3, color='g')
-    plt.axhline(y=dqn_agent.threshold, color='r', linestyle='dashed', label='Solved')
-    plt.legend()
-    plt.show()"""

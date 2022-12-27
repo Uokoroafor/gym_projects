@@ -18,11 +18,9 @@ class ReplayBuffer:
         Args:
             transition(obj): to be stored in replay buffer
 
-        Returns:
-            The current memory of the buffer (any iterable object e.g. list)
         """
         self.buffer.append(transition)
-        return self.buffer
+        # return self.buffer
 
     def sample(self, batch_size):
         """Randomly sample the replay buffer
