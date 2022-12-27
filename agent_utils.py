@@ -62,7 +62,7 @@ class Agent:
         episode_rewards = []
         scores_window = deque(maxlen=100)
 
-        print('Training Agent...')
+        print(f'Training {self.label}...')
 
         for i_episode in range(episodes):
             if (i_episode + 1) % (episodes / 10) == 0:
@@ -349,12 +349,11 @@ class DDQNAgent(Agent):
         return ((q_values - bellman_targets) ** 2).mean()
 
 
-def dqn_example():
-    env = gym.make("LunarLander-v2", render_mode='rgb_array')
-    dqn_agent = Agent(env)
+def dqn_example(gym_env):
+    dqn_agent = Agent(gym_env)
 
-    input_size = env.observation_space.shape[0]
-    output_size = env.action_space.n
+    input_size = gym_env.observation_space.shape[0]
+    output_size = gym_env.action_space.n
 
     # DQN Parameters
     layers = [input_size, 128, 128, output_size]  # DQN Architecture
@@ -370,7 +369,7 @@ def dqn_example():
     replay_buffer = 100000
     batch_size = 64
     epsilon_end = 0.01
-    episodes = 100
+    episodes = 1000
     update_frequency = 5
     clip_rewards = False
 
@@ -380,18 +379,16 @@ def dqn_example():
 
     run_stats = dqn_agent.train_agent(show_time=True, **training_params)
     dqn_agent.plot_episodes(run_stats['episode_rewards'])
-    # dqn_agent.evaluate_agent(10, plots=True, save_every=10)
 
 
-def ddqn_example():
-    env = gym.make("LunarLander-v2", render_mode='rgb_array')
-    ddqn_agent = DDQNAgent(env)
+def ddqn_example(gym_env):
+    ddqn_agent = DDQNAgent(gym_env)
 
-    input_size = env.observation_space.shape[0]
-    output_size = env.action_space.n
+    input_size = gym_env.observation_space.shape[0]
+    output_size = gym_env.action_space.n
 
     # DDQN Parameters
-    layers = [input_size, 128, 128, output_size]  # DQN Architecture
+    layers = [input_size, 64, 64, output_size]  # DQN Architecture
     activation = 'relu'
     weights = 'xunif'
     optim = 'Adam'
@@ -400,7 +397,7 @@ def ddqn_example():
 
     # Training Parameters
     epsilon = 1
-    eps_decay = 0.995  
+    eps_decay = 0.995
     replay_buffer = 100000
     batch_size = 64
     epsilon_end = 0.01
@@ -414,10 +411,9 @@ def ddqn_example():
 
     run_stats = ddqn_agent.train_agent(show_time=True, **training_params)
     ddqn_agent.plot_episodes(run_stats['episode_rewards'])
-    # dqn_agent.evaluate_agent(10, plots=True, save_every=10)
 
 
 if __name__ == '__main__':
-    dqn_example()
-    ddqn_example()
-
+    env = gym.make("LunarLander-v2", render_mode='rgb_array')
+    dqn_example(gym_env=env)
+    ddqn_example(gym_env=env)
