@@ -3,7 +3,7 @@ from agent_utils import *
 
 if __name__ == '__main__':
 
-    env = gym.make("LunarLander-v2", render_mode='rgb_array')
+    env = gym.make("MountainCar-v0", render_mode='rgb_array')
 
 
     input_size = env.observation_space.shape[0]
@@ -12,17 +12,17 @@ if __name__ == '__main__':
     dqn_agent = Agent(env)
 
     # DQN Parameters
-    layers = [input_size, 256, 128, output_size]  # DQN Architecture
+    layers = [input_size, 32, 32, output_size]  # DQN Architecture
     activation = 'relu'
     weights = 'xunif'
     optim = 'Adam'
-    learning_rate = 5e-4
+    learning_rate = 1e-3
     dqn_params = dict(layers=layers, activation=activation, weights=weights, optim=optim, learning_rate=learning_rate)
 
     # Training Parameters
     num_runs = 1
     epsilon = 1
-    eps_decay = 0.995  # Epsilon is reduced by 1-eps_decay every episode
+    eps_decay = 0.99999  # Epsilon is reduced by 1-eps_decay every episode
     replay_buffer = 100000
     batch_size = 64
     epsilon_end = 0.01
