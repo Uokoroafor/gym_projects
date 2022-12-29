@@ -13,10 +13,13 @@ from DQN import DQN
 
 class Agent:
     def __init__(self, env, reward_threshold=None):
-        """Object for a DQN based agent
+        """Creates a DQN based agent for a given gym environment
 
         Args:
-            env (object): 
+            reward_threshold (float): To set a reward threshold after which to stop training the agent. Defaults to the
+            environment's solved threshold if not specified
+            env (object): OpenAI gym environment
+
         """
         self.trained_state_dict = None
         self.training_dict = None
@@ -30,23 +33,29 @@ class Agent:
             self.threshold = reward_threshold
 
     def train_agent(self, dqn_params, replay_buffer, episodes, epsilon, epsilon_end=0.01, eps_decay=1,
-                    update_frequency=10, batch_size=32, clip_rewards=False, show_time=False):
-        """Trains the dqn using the DQN parameters
+                    gamma=1, update_frequency=10, batch_size=32, clip_rewards=False, show_time=False,
+                    delay_decay=False):
+        """Trains the Agent using the specified parameters
             Args:
-                batch_size (int):
-                show_time (bool):
-                update_frequency (int):
-                eps_decay (float):
-                epsilon_end (float):
-                epsilon (float):
-                episodes (int):
-                replay_buffer (int):
-                clip_rewards (bool):
-                dqn_params (mapping):
+                delay_decay (bool): if True epsilon decay starts only after a positive reward has been received. Set up for the Mountain Car environment
+                gamma (float): Discount rate between 0 and 1
+                batch_size (int): batch_size sampled from the replay buffer over which we train
+                show_time (bool): Outputs the time taken to (successfully) train the agent if True
+                update_frequency (int): Number of episodes between updates of the target policy
+                eps_decay (float): (1-the rate at which epsilon is decayed per episode). If set to 1, there will be no epsilon decay
+                epsilon_end (float): set a value for minimum epsilon
+                epsilon (float): epsilon at the start of learning
+                episodes (int): Maximum number of episodes
+                replay_buffer (int): The maximum number of transitions to be stored in the ReplayBuffer
+                clip_rewards (bool): keeps all rewards to range (b,a)
+                dqn_params (mapping): The parameters of the underlying DQNs (same parameters for policy and target networks)
 
             Returns:
                 self.training_dict(dict): Dictionary with episode rewards and durations
             """
+        # Make some assertions
+        assert epsilon >= epsilon_end, "Starting epsilon should not be less that end epsilon"
+
         if show_time:
             strt = time.time()
 
@@ -68,7 +77,7 @@ class Agent:
             if (i_episode + 1) % (episodes / 10) == 0:
                 print("episode ", i_episode + 1, "of max", episodes)
 
-            observation, info = self.env.reset()
+            observation, _ = self.env.reset()
             state = torch.tensor(observation).float()
 
             done = False
@@ -81,7 +90,7 @@ class Agent:
                 # Select and perform an action
                 action = self.epsilon_greedy(epsilon, self.policy_dqn, state)
 
-                observation, reward, done, terminated, info = self.env.step(action)
+                observation, reward, done, terminated, _ = self.env.step(action)
                 episode_reward += reward
                 if clip_rewards:
                     reward = self.clip_reward(reward)
@@ -91,6 +100,7 @@ class Agent:
                 next_state = torch.tensor(observation).reshape(-1).float()
 
                 memory.push([state, action, next_state, reward, torch.tensor([done])])
+
                 # Move to the next state
                 state = next_state
 
@@ -100,7 +110,7 @@ class Agent:
                     state_batch, action_batch, nextstate_batch, reward_batch, dones = (torch.stack(x) for x in
                                                                                        zip(*transitions))
                     # Compute loss
-                    mse_loss = self.loss(state_batch, action_batch, reward_batch, nextstate_batch, dones)
+                    mse_loss = self.loss(state_batch, action_batch, reward_batch, nextstate_batch, dones, gamma)
                     # Optimize the model
                     optimizer.zero_grad()
                     mse_loss.backward()
@@ -110,6 +120,10 @@ class Agent:
                     episode_durations.append(t + 1)
                     episode_rewards.append(episode_reward)
                     scores_window.append(episode_reward)
+                    if delay_decay and episode_reward > 0:
+                        delay_decay = False
+                        print(f'Received positive reward at episode {i_episode}.',
+                              'Will begin epsilon decay now')
 
                 t += 1
 
@@ -124,7 +138,7 @@ class Agent:
                 break
 
             # Update epsilon
-            if epsilon > epsilon_end:
+            if epsilon > epsilon_end and not delay_decay:
                 epsilon *= eps_decay
                 epsilon = max(epsilon_end, epsilon)
 
@@ -144,6 +158,8 @@ class Agent:
                 save_every(int or None): x s.t. the rendering gif is saved every x episodes. So 10 means every 10th
                 rendering is saved. If it is None, no rendering is saved
 
+            Returns:
+                dict: Dictionary with episode rewards and durations
             """
 
         episode_durations = []
@@ -156,11 +172,12 @@ class Agent:
 
         # Turn off train mode
         self.policy_dqn.eval()
+
         for i_episode in range(episodes):
             if (i_episode + 1) % (episodes / 10) == 0:
                 print("episode ", i_episode + 1, "of", episodes)
 
-            observation, info = self.env.reset()
+            observation, _ = self.env.reset()
             state = torch.tensor(observation).float()
 
             done = False
@@ -168,7 +185,6 @@ class Agent:
             t = 0
             episode_reward = 0
             frames = []
-            rewards = []
 
             while not (done or terminated):
                 frames.append(self.env.render())
@@ -176,9 +192,8 @@ class Agent:
                 # Select and perform an action
                 action = self.greedy_action(self.policy_dqn, state)
 
-                observation, reward, done, terminated, info = self.env.step(action)
+                observation, reward, done, terminated, _ = self.env.step(action)
                 episode_reward += reward
-                rewards.append(reward)
                 next_state = torch.tensor(observation).reshape(-1).float()
 
                 # Move to the next state
@@ -260,27 +275,30 @@ class Agent:
         else:
             return random.randint(0, num_actions - 1)
 
-    def loss(self, states, actions, rewards, next_states, dones):
+    def loss(self, states, actions, rewards, next_states, dones, gamma):
         """Calculate Bellman error loss
 
         Args:
-            states: batched state tensor
-            actions: batched action tensor
-            rewards: batched rewards tensor
-            next_states: batched next states tensor
-            dones: batched Boolean tensor, True when episode terminates
+            states (torch.tensor): Tensor of batched states
+            actions (torch.tensor):Tensor of batched actions
+            rewards (torch.tensor): Tensor of batched rewards
+            next_states (torch.tensor): Tensor of batched next_states
+            dones (torch.tensor): Tensor of batched bools, True when episode terminates
+            gamma (float): Discount rate
+
 
         Returns:
-            Float scalar tensor with loss value
+            Float: scalar tensor with the loss value
         """
 
-        bellman_targets = (~dones).reshape(-1) * (self.target_dqn(next_states)).max(1).values + rewards.reshape(-1)
+        bellman_targets = gamma * (~dones).reshape(-1) * (self.target_dqn(next_states)).max(1).values + rewards.reshape(
+            -1)
         q_values = self.policy_dqn(states).gather(1, actions).reshape(-1)
 
         return ((q_values - bellman_targets) ** 2).mean()
 
     @staticmethod
-    def clip_reward(reward, a=-10, b=10):
+    def clip_reward(reward, a=-1, b=1):
         if reward < a:
             return a
         elif reward > b:
@@ -320,22 +338,23 @@ class Agent:
 
 class DDQNAgent(Agent):
     def __init__(self, env, reward_threshold=None):
-        super(Agent, self).__init__(env=env, reward_threshold=reward_threshold)
+        super().__init__(env=env, reward_threshold=reward_threshold)
         self.label = 'DDQN Agent'
 
-    def loss(self, states, actions, rewards, next_states, dones):
+    def loss(self, states, actions, rewards, next_states, dones, gamma):
         """Calculate Bellman error loss
 
         Args:
-            states: batched state tensor
-            actions: batched action tensor
-            rewards: batched rewards tensor
-            next_states: batched next states tensor
-            dones: batched Boolean tensor, True when episode terminates
+            states (torch.tensor): Tensor of batched states
+            actions (torch.tensor):Tensor of batched actions
+            rewards (torch.tensor): Tensor of batched rewards
+            next_states (torch.tensor): Tensor of batched next_states
+            dones (torch.tensor): Tensor of batched bools, True when episode terminates
+            gamma (float): Discount rate
 
 
         Returns:
-            Float scalar tensor with loss value
+            Float: scalar tensor with the loss value
         """
 
         # The below code first determines the ideal actions using the policy network,
@@ -343,7 +362,7 @@ class DDQNAgent(Agent):
 
         policy_dqn_actions = self.policy_dqn(next_states).max(1).indices.reshape([-1, 1])
         q_vals = self.target_dqn(next_states).gather(1, policy_dqn_actions).reshape(-1)
-        bellman_targets = (~dones).reshape(-1) * q_vals + rewards.reshape(-1)
+        bellman_targets = gamma * (~dones).reshape(-1) * q_vals + rewards.reshape(-1)
         q_values = self.policy_dqn(states).gather(1, actions).reshape(-1)
 
         return ((q_values - bellman_targets) ** 2).mean()
@@ -356,7 +375,7 @@ def dqn_example(gym_env):
     output_size = gym_env.action_space.n
 
     # DQN Parameters
-    layers = [input_size, 128, 128, output_size]  # DQN Architecture
+    layers = [input_size, 256, 128, output_size]
     activation = 'relu'
     weights = 'xunif'
     optim = 'Adam'
@@ -365,11 +384,11 @@ def dqn_example(gym_env):
 
     # Training Parameters
     epsilon = 1
-    eps_decay = 0.995  # Epsilon is reduced by 1-eps_decay every episode
+    eps_decay = 0.995
     replay_buffer = 100000
-    batch_size = 64
+    batch_size = 128
     epsilon_end = 0.01
-    episodes = 1000
+    episodes = 100
     update_frequency = 5
     clip_rewards = False
 
@@ -388,7 +407,7 @@ def ddqn_example(gym_env):
     output_size = gym_env.action_space.n
 
     # DDQN Parameters
-    layers = [input_size, 64, 64, output_size]  # DQN Architecture
+    layers = [input_size, 256, 128, output_size]  # DQN Architecture
     activation = 'relu'
     weights = 'xunif'
     optim = 'Adam'
@@ -416,4 +435,4 @@ def ddqn_example(gym_env):
 if __name__ == '__main__':
     env = gym.make("LunarLander-v2", render_mode='rgb_array')
     dqn_example(gym_env=env)
-    ddqn_example(gym_env=env)
+    # ddqn_example(gym_env=env)

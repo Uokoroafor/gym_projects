@@ -17,10 +17,9 @@ class ReplayBuffer:
 
         Args:
             transition(obj): to be stored in replay buffer
-
         """
         self.buffer.append(transition)
-        # return self.buffer
+
 
     def sample(self, batch_size):
         """Randomly sample the replay buffer

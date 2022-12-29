@@ -9,42 +9,57 @@ class DQN(nn.Module):
         assert len(self.layers) >= 2, "There needs to be at least an input and output "
         self.learning_rate = learning_rate
 
-        # Make activation function
-        if activation == 'relu':
-            self.activation = nn.ReLU()
-        elif activation == 'sig':
-            self.activation = nn.Sigmoid()
-        elif activation == 'tanh':
-            self.activation = nn.Tanh()
+        # Set Activation Function
+        self.activation = self.set_activation(activation)
 
-        # Make weights function
-        if weights == 'xunif':
-            self.weights_init = nn.init.xavier_uniform_
-        elif weights == 'xnorm':
-            self.weights_init = nn.init.xavier_normal_
-        elif weights == 'unif':
-            self.weights_init = nn.init.uniform_
-        elif weights == 'norm':
-            self.weights_init = nn.init.normal_
-        else:
-            print('No known weight initialisation provided. Using Xavier Uniform')
-            self.weights_init = nn.init.xavier_uniform_
+        # Make weights initialisation method
+        self.weights_init = self.set_weights_init(weights)
 
-        # Make Layers
+        # Apply Layers
         self.nn_model = self.apply_layers()
 
-        # Make optimisation function
+        # Set optimisation function
+        self.optim = self.set_optimizer(optim)
+
+    @staticmethod
+    def set_activation(activation):
+        # Make activation function
+        if activation == 'relu':
+            return nn.ReLU()
+        elif activation == 'sig':
+            return nn.Sigmoid()
+        elif activation == 'tanh':
+            return nn.Tanh()
+        else:
+            print('No known activation function provided. Using ReLU.')
+            return nn.ReLU()
+
+    @staticmethod
+    def set_weights_init(weights):
+        if weights == 'xunif':
+            return nn.init.xavier_uniform_
+        elif weights == 'xnorm':
+            return nn.init.xavier_normal_
+        elif weights == 'unif':
+            return nn.init.uniform_
+        elif weights == 'norm':
+            return nn.init.normal_
+        else:
+            print('No known weight initialisation provided. Using Xavier Uniform')
+            return nn.init.xavier_uniform_
+
+    def set_optimizer(self, optim):
         if optim == 'Adam':
-            self.optim = Adam
+            optim_fn = Adam
         elif optim == 'SGD':
-            self.optim = SGD
+            optim_fn = SGD
         elif optim == 'Adagrad':
-            self.optim = Adagrad
+            optim_fn = Adagrad
         else:
             print('No known optimiser provided. Using Adam.')
-            self.optim = Adam
+            optim_fn = Adam
 
-        self.optim = self.optim(self.parameters(), lr=self.learning_rate)
+        return optim_fn(self.parameters(), lr=self.learning_rate)
 
     def make_weights_bias(self, layer):
         # Initialise weights randomly and set biases to zero
