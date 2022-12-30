@@ -17,7 +17,6 @@ if __name__ == '__main__':
     dqn_params = dict(layers=layers, activation=activation, weights=weights, optim=optim, learning_rate=learning_rate)
 
     # Training Parameters
-    num_runs = 1
     epsilon = 1
     eps_decay = 0.996  # Epsilon is reduced by 1-eps_decay every episode
     replay_buffer = 100000
