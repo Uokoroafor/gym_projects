@@ -9,11 +9,11 @@ if __name__ == '__main__':
     dqn_agent = Agent(env)
 
     # DQN Parameters
-    layers = [input_size, 256, 256, output_size]  # DQN Architecture
+    layers = [input_size, 256, 128, output_size]  # DQN Architecture
     activation = 'relu'
     weights = 'xunif'
     optim = 'Adam'
-    learning_rate = 1e-4
+    learning_rate = 5e-4
     dqn_params = dict(layers=layers, activation=activation, weights=weights, optim=optim, learning_rate=learning_rate)
 
     # Training Parameters
