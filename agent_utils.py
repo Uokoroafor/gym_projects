@@ -120,6 +120,7 @@ class Agent:
                     episode_durations.append(t + 1)
                     episode_rewards.append(episode_reward)
                     scores_window.append(episode_reward)
+                    # print(np.mean(scores_window))
                     if delay_decay and episode_reward > 0:
                         delay_decay = False
                         print(f'Received positive reward at episode {i_episode}.',
@@ -420,7 +421,7 @@ def ddqn_example(gym_env):
     replay_buffer = 100000
     batch_size = 64
     epsilon_end = 0.01
-    episodes = 100
+    episodes = 1000
     update_frequency = 5
     clip_rewards = False
 
