@@ -151,13 +151,14 @@ class Agent:
         self.training_dict = dict(episode_durations=episode_durations, episode_rewards=episode_rewards)
         return self.training_dict
 
-    def evaluate_agent(self, episodes, plots=True, save_every=None):
+    def evaluate_agent(self, episodes, plots=True, save_every=None, nb_render=False):
         """Evaluates performance of Trained Agent over a number of episodes
             Args:
                 episodes(int): Number of episodes the train agent carries out
                 plots (bool): Plots the score curve for the episodes if true
                 save_every(int or None): x s.t. the rendering gif is saved every x episodes. So 10 means every 10th
                 rendering is saved. If it is None, no rendering is saved
+                nb_render(bool): Passed on to the save_render function
 
             Returns:
                 dict: Dictionary with episode rewards and durations
@@ -207,7 +208,7 @@ class Agent:
                     print(f'{t + 1} steps')
 
                     if ((i_episode + 1) % save_every) == 0:
-                        self.save_render(frames, i_episode)
+                        self.save_render(frames, i_episode, nb_render=nb_render)
 
                 t += 1
         if plots:
@@ -215,18 +216,103 @@ class Agent:
 
         return dict(episode_durations=episode_durations, episode_rewards=episode_rewards)
 
-    def save_render(self, frames, i_episode, mode='eval'):
+    def save_random_renders(self, episodes=1, plots=False, save_every=1, nb_render=True):
+        """Evaluates performance of Trained Agent over a number of episodes
+            Args:
+                episodes(int): Number of episodes the train agent carries out
+                plots (bool): Plots the score curve for the episodes if true
+                save_every(int or None): x s.t. the rendering gif is saved every x episodes. So 10 means every 10th
+                rendering is saved. If it is None, no rendering is saved
+                nb_render(bool): Passed on to the save_render function
+
+            Returns:
+                dict: Dictionary with episode rewards and durations
+            """
+
+        episode_durations = []
+        episode_rewards = []
+
+        # Set save_every so that it is not a divisor for any number in range(episodes)
+        if save_every is None:
+            save_every = episodes + 2
+        print("saving a random render")
+
+        # Turn off train mode
+        # self.policy_dqn.eval()
+
+        for i_episode in range(episodes):
+            if (i_episode + 1) % (episodes / 10) == 0:
+                print("episode ", i_episode + 1, "of", episodes)
+
+            self.env.reset()
+
+            done = False
+            terminated = False
+            t = 0
+            episode_reward = 0
+            frames = []
+
+            while not (done or terminated):
+                frames.append(self.env.render())
+
+                # Select and perform a random action
+                action = self.env.action_space.sample()
+
+                _, reward, done, terminated, _ = self.env.step(action)
+                episode_reward += reward
+                # next_state = torch.tensor(observation).reshape(-1).float()
+
+                # Move to the next state
+                # state = next_state
+
+                if done or terminated:
+                    episode_durations.append(t + 1)
+                    episode_rewards.append(episode_reward)
+                    print(f'Random episode {i_episode + 1} with reward {episode_reward}')
+                    print(f'{t + 1} steps')
+
+                    if ((i_episode + 1) % save_every) == 0:
+                        self.save_render(frames, i_episode, mode='rand',nb_render=nb_render)
+
+                t += 1
+        if plots:
+            self.plot_episodes(episode_rewards)
+
+        return None
+
+    def save_render(self, frames, i_episode, mode='eval', nb_render=False):
+        """
+        Saves the rendering as a gif
+        Args:
+            frames (list(images)): list of image frames saved from rendering
+            i_episode (int): the current episode of learning
+            mode (str): where in 'eval' (evaluating trained agent), 'random'(evaluating untrained agent) or 'training' (saving renderings of an agent in training) mode
+            nb_render (bool): if True, indicates that the rendering is for an ipynb and is saved without a timestamp.
+
+        Returns:
+            None
+
+        """
         folder_name = 'images/' + self.env.unwrapped.spec.id
         self.check_path_exists(folder_name)
 
         if mode == 'eval':
-            mode = 'evaluations_'
+            mode = 'evaluation_'
+        elif mode == 'rand':
+            mode = 'random_'
         else:
             mode = 'training_'
 
-        imageio.mimsave(
-            str(folder_name) + '/' + mode + str(i_episode + 1) + '_' + time.strftime("%y%m%d_%H%M") + '.gif',
-            frames, fps=15)
+        if nb_render:
+            imageio.mimsave(
+                str(folder_name) + '/' + mode[:-1] + '.gif',
+                frames, fps=15)
+
+        else:
+            imageio.mimsave(
+                str(folder_name) + '/' + mode + str(i_episode + 1) + '_' + time.strftime("%y%m%d_%H%M") + '.gif',
+                frames, fps=15)
+
         pass
 
     @staticmethod
@@ -240,6 +326,9 @@ class Agent:
 
     def update_target(self):
         """Update target network parameters using policy network.
+
+        Returns:
+            None
         """
 
         self.target_dqn.load_state_dict(self.policy_dqn.state_dict())
@@ -323,6 +412,12 @@ class Agent:
 
     @staticmethod
     def print_time(strt, endt):
+        """Calculates time difference and prints the execution time in hours, minutes and seconds
+
+        Args:
+            strt(float): the start time
+            endt(float): the end time
+        """
         # get the execution time
         elapsed_ = endt - strt
         hours = elapsed_ // (60 * 60)
