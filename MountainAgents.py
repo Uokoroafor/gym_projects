@@ -1,4 +1,5 @@
-from agent_utils import *
+from agent_utils import Agent
+import gym
 
 if __name__ == '__main__':
     env = gym.make("MountainCar-v0", render_mode='rgb_array')
