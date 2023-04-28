@@ -67,6 +67,8 @@ class DQN(nn.Module):
         nn.init.zeros_(layer.bias)
 
     def apply_layers(self):
+
+
         layer_list = []
 
         for k in range(len(self.layers) - 1):
@@ -80,7 +82,6 @@ class DQN(nn.Module):
         return nn.Sequential(*layer_list)
 
     def forward(self, state):
-
         return self.nn_model(state)
 
 

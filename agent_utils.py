@@ -503,7 +503,7 @@ def ddqn_example(gym_env):
     output_size = gym_env.action_space.n
 
     # DDQN Parameters
-    layers = [input_size, 256, 128, output_size]  # DQN Architecture
+    layers = [input_size, 256, 128, output_size]  # DDQN Architecture
     activation = 'relu'
     weights = 'xunif'
     optim = 'Adam'
