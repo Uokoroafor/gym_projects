@@ -7,8 +7,8 @@ import numpy as np
 import torch
 import imageio
 import os
-from ReplayBuffer import ReplayBuffer
-from DQN import DQN
+from replaybuffer import ReplayBuffer
+from dqn import DQN
 
 
 class Agent:
@@ -88,7 +88,11 @@ class Agent:
             while not (done or terminated):
 
                 # Select and perform an action
+                #action = np.array(self.epsilon_greedy(epsilon, self.policy_dqn, state), dtype=np.float32)
                 action = self.epsilon_greedy(epsilon, self.policy_dqn, state)
+
+                print(action)
+                print(type(action))
 
                 observation, reward, done, terminated, _ = self.env.step(action)
                 episode_reward += reward
@@ -434,6 +438,13 @@ class Agent:
 
 class DDQNAgent(Agent):
     def __init__(self, env, reward_threshold=None):
+        """Initialize the DDQN Agent
+
+        Args:
+            env (gym.env): Gym environment
+            reward_threshold (float): Reward threshold for the environment
+            """
+
         super().__init__(env=env, reward_threshold=reward_threshold)
         self.label = 'DDQN Agent'
 
@@ -497,6 +508,7 @@ def dqn_example(gym_env):
 
 
 def ddqn_example(gym_env):
+    """Example of how to use the DDQN Agent to solve an environment"""
     ddqn_agent = DDQNAgent(gym_env)
 
     input_size = gym_env.observation_space.shape[0]

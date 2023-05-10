@@ -1,15 +1,13 @@
 import time
 from collections import deque
 import gym
-import numpy as np
 import torch
-from DQN import DQN
-from ReplayBuffer import ReplayBuffer
+from dqn import DQN
+from replaybuffer import ReplayBuffer
 from agent_utils import Agent
 
 
 class MountainCarAgent(Agent):
-
     def __init__(self, env):
         super().__init__(env)
 
@@ -86,10 +84,7 @@ class MountainCarAgent(Agent):
 
                 # want to scale so that velocity is more important than distance
 
-                reward = observation[0] * observation[1] * 100
-
-
-
+                reward = observation[0] * observation[1] + observation[0] * 0.1
 
                 if clip_rewards:
                     reward = self.clip_reward(reward)

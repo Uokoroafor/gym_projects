@@ -1,9 +1,21 @@
+from typing import List, Optional
+
 from torch import nn
 from torch.optim import Adam, SGD, Adagrad
 
 
 class DQN(nn.Module):
-    def __init__(self, activation, layers, weights='xunif', optim='Adam', learning_rate=1e-3):
+    def __init__(self, activation: str, layers: List, weights:Optional[str]='xunif', optim: Optional[str]='Adam', learning_rate: Optional[float]=1e-3):
+        """ Deep Q Network Class
+
+        Args:
+            activation: Activation function to use in the network.
+            layers: List of layer sizes to use in the network.
+            weights: Weight initialisation method to use in the network defaults to Xavier Uniform.
+            optim: Optimisation method to use in the network defaults to Adam.
+            learning_rate: Learning rate to use in the network defaults to 1e-3.
+        """
+
         super(DQN, self).__init__()
         self.layers = layers
         assert len(self.layers) >= 2, "There needs to be at least an input and output "
@@ -67,10 +79,7 @@ class DQN(nn.Module):
         nn.init.zeros_(layer.bias)
 
     def apply_layers(self):
-
-
         layer_list = []
-
         for k in range(len(self.layers) - 1):
             layer = nn.Linear(in_features=self.layers[k], out_features=self.layers[k + 1])
             self.make_weights_bias(layer)
