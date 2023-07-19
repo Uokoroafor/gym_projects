@@ -20,7 +20,6 @@ class ReplayBuffer:
         """
         self.buffer.append(transition)
 
-
     def sample(self, batch_size):
         """Randomly sample the replay buffer
 
@@ -31,7 +30,3 @@ class ReplayBuffer:
             sampled list from buffer without replacement
         """
         return random.sample(self.buffer, batch_size)
-
-
-if __name__ == '__main__':
-    pass
