@@ -1,4 +1,5 @@
-from agent_utils import *
+from agent_utils import Agent
+import gym
 
 
 if __name__ == '__main__':
