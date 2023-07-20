@@ -36,6 +36,7 @@ The agent is able to learn the environment going from a random policy (left) to 
   <img src="./images/lunarlander-v2/random.gif" alt="Random Policy" width="300"/>
   <img src="./images/lunarlander-v2/evaluation.gif" alt="Trained Policy" width="300"/>
 
+![Random Policy](./images/lunarlander-v2/random.gif)
 
 ```bash
 python examples/cartpole_agents.py
