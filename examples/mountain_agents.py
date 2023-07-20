@@ -1,5 +1,7 @@
 import time
 from collections import deque
+from typing import Dict, Optional
+
 import gym
 import torch
 from dqn import DQN
@@ -14,36 +16,34 @@ class MountainCarAgent(Agent):
     # Overwrite the train_agent method to maximise the product of the distance travelled and the speed
     def train_agent(
         self,
-        dqn_params,
-        replay_buffer,
-        episodes,
-        epsilon,
-        epsilon_end=0.01,
-        eps_decay=1,
-        gamma=1,
-        update_frequency=10,
-        batch_size=32,
-        clip_rewards=False,
-        show_time=False,
-        delay_decay=False,
+        dqn_params: Dict,
+        replay_buffer: int,
+        episodes: int,
+        epsilon: float,
+        epsilon_end: Optional[float] = 0.01,
+        eps_decay: Optional[float] = 0.995,
+        gamma: Optional[float] = 1.0,
+        update_frequency: Optional[int] = 10,
+        batch_size: Optional[int] = 32,
+        clip_rewards: Optional[bool] = False,
+        show_time: Optional[bool] = False,
+        delay_decay: Optional[bool] = False,
     ):
-        """Trains the Agent using the specified parameters
-        Args:
-            delay_decay (bool): if True epsilon decay starts only after a positive reward has been received. Set up for the Mountain Car environment
-            gamma (float): Discount rate between 0 and 1
-            batch_size (int): batch_size sampled from the replay buffer over which we train
-            show_time (bool): Outputs the time taken to (successfully) train the agent if True
-            update_frequency (int): Number of episodes between updates of the target policy
-            eps_decay (float): (1-the rate at which epsilon is decayed per episode). If set to 1, there will be no epsilon decay
-            epsilon_end (float): set a value for minimum epsilon
-            epsilon (float): epsilon at the start of learning
-            episodes (int): Maximum number of episodes
-            replay_buffer (int): The maximum number of transitions to be stored in the ReplayBuffer
-            clip_rewards (bool): keeps all rewards to range (b,a)
-            dqn_params (mapping): The parameters of the underlying DQNs (same parameters for policy and target networks)
+        """Train the agent on the environment.
 
-        Returns:
-            self.training_dict(dict): Dictionary with episode rewards and durations
+        Args:
+            dqn_params (Dict): Parameters for the DQN
+            replay_buffer (int): Size of the replay buffer
+            episodes (int): Number of episodes to train for
+            epsilon (float): Starting epsilon value
+            epsilon_end (Optional[float], optional): End epsilon value. Defaults to 0.01.
+            eps_decay (Optional[float], optional): Decay rate of epsilon. Defaults to 0.995.
+            gamma (Optional[float], optional): Discount factor. Defaults to 1.0.
+            update_frequency (Optional[int], optional): Frequency of updating the target network. Defaults to 10.
+            batch_size (Optional[int], optional): Batch size for training. Defaults to 32.
+            clip_rewards (Optional[bool], optional): Whether to clip rewards. Defaults to False.
+            show_time (Optional[bool], optional): Whether to show time taken for training. Defaults to False.
+            delay_decay (Optional[bool], optional): Whether to delay the decay of epsilon. Defaults to False.
         """
         # Make some assertions
         assert (
@@ -90,10 +90,6 @@ class MountainCarAgent(Agent):
 
                 # Overwrite the reward function to maximise the product of the distance travelled and the speed
                 episode_reward += observation[0] * observation[1]
-
-                # print(f'Episode reward: {episode_reward}')
-                # print(f'Distance: {observation[0]}')
-                # print(f'Speed: {observation[1]}')
 
                 # want to scale so that velocity is more important than distance
 
@@ -148,12 +144,6 @@ class MountainCarAgent(Agent):
             # Update the target dqn, copying all weights and biases in DQN
             if i_episode % update_frequency == 0:
                 self.update_target()
-
-            # # Check if solved threshold has been reached
-            # if np.mean(scores_window) >= self.threshold:
-            #     print(f'Environment solved within {i_episode + 1} episodes.')
-            #     print(f'Average Score: {np.mean(scores_window)}')
-            #     break
 
             # Update epsilon
             if epsilon > epsilon_end and not delay_decay:

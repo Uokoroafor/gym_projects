@@ -1,24 +1,26 @@
 import random
 import time
 from collections import deque
+from typing import Optional, Dict
+
 import gym
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
-import imageio
-import os
-from replaybuffer import ReplayBuffer
 from dqn import DQN
+from replaybuffer import ReplayBuffer
+from utils.logging_utils import DQNLogger, get_time
+from utils.plot_utils import plot_episodes
+from utils.render_utils import save_render
 
 
 class Agent:
-    def __init__(self, env, reward_threshold=None):
+    def __init__(self, env: gym.Env, reward_threshold: Optional[float] = None):
         """Creates a DQN based agent for a given gym environment
 
         Args:
-            reward_threshold (float): To set a reward threshold after which to stop training the agent. Defaults to the
-            environment's solved threshold if not specified
-            env (object): OpenAI gym environment
+            env (gym.Env): The environment to be solved
+            reward_threshold (float): The reward threshold for the environment. If None, the default threshold
+            for the environment is used
+
 
         """
         self.trained_state_dict = None
@@ -31,65 +33,74 @@ class Agent:
             self.threshold = self.env.spec.reward_threshold
         else:
             self.threshold = reward_threshold
+        self.logger = None
 
     def train_agent(
-        self,
-        dqn_params,
-        replay_buffer,
-        episodes,
-        epsilon,
-        epsilon_end=0.01,
-        eps_decay=1,
-        gamma=1,
-        update_frequency=10,
-        batch_size=32,
-        clip_rewards=False,
-        show_time=False,
-        delay_decay=False,
+            self,
+            dqn_params: Dict,
+            replay_buffer: ReplayBuffer,
+            episodes: int,
+            epsilon: float,
+            epsilon_end: Optional[float] = 0.01,
+            eps_decay: Optional[float] = 1.0,
+            gamma: Optional[float] = 1.0,
+            update_frequency: Optional[int] = 10,
+            batch_size: Optional[int] = 32,
+            clip_rewards: Optional[bool] = False,
+            show_time: Optional[bool] = False,
+            delay_decay: Optional[bool] = False,
+            log_path: Optional[str] = None,
+            verbose: Optional[bool] = False,
     ):
         """Trains the Agent using the specified parameters
         Args:
-            delay_decay (bool): if True epsilon decay starts only after a positive reward has been received. Set up for the Mountain Car environment
-            gamma (float): Discount rate between 0 and 1
-            batch_size (int): batch_size sampled from the replay buffer over which we train
-            show_time (bool): Outputs the time taken to (successfully) train the agent if True
-            update_frequency (int): Number of episodes between updates of the target policy
-            eps_decay (float): (1-the rate at which epsilon is decayed per episode). If set to 1, there will be no epsilon decay
-            epsilon_end (float): set a value for minimum epsilon
-            epsilon (float): epsilon at the start of learning
-            episodes (int): Maximum number of episodes
-            replay_buffer (int): The maximum number of transitions to be stored in the ReplayBuffer
-            clip_rewards (bool): keeps all rewards to range (b,a)
-            dqn_params (mapping): The parameters of the underlying DQNs (same parameters for policy and target networks)
-
-        Returns:
-            self.training_dict(dict): Dictionary with episode rewards and durations
+            dqn_params (Dict): Parameters for the DQN
+            replay_buffer (ReplayBuffer): Replay buffer to be used
+            episodes (int): Number of episodes to train for
+            epsilon (float): Starting epsilon value
+            epsilon_end (Optional[float], optional): End epsilon value. Defaults to 0.01.
+            eps_decay (Optional[float], optional): Decay rate of epsilon. Defaults to 0.995.
+            gamma (Optional[float], optional): Discount factor. Defaults to 1.0.
+            update_frequency (Optional[int], optional): Frequency of updating the target network. Defaults to 10.
+            batch_size (Optional[int], optional): Batch size for training. Defaults to 32.
+            clip_rewards (Optional[bool], optional): Whether to clip rewards. Defaults to False.
+            show_time (Optional[bool], optional): Whether to show time taken for training. Defaults to False.
+            delay_decay (Optional[bool], optional): Whether to delay the decay of epsilon. Defaults to False.
+            log_path (Optional[str], optional): Path to save logs. Defaults to None.
+            verbose (Optional[bool], optional): Whether to print training logs. Defaults to False.
         """
-        # Make some assertions
+
         assert (
-            epsilon >= epsilon_end
+                epsilon >= epsilon_end
         ), "Starting epsilon should not be less that end epsilon"
 
-        if show_time:
-            strt = time.time()
+        strt = time.time()
 
+        # Initialize the policy and target networks
         self.policy_dqn = DQN(**dqn_params)
         self.target_dqn = DQN(**dqn_params)
         self.update_target()
         self.target_dqn.eval()
 
+        # Initialize the optimizer and replay buffer
         optimizer = self.policy_dqn.optim
         memory = ReplayBuffer(replay_buffer)
 
+        # Initialize the logger
         episode_durations = []
         episode_rewards = []
         scores_window = deque(maxlen=100)
 
-        print(f"Training {self.label}...")
+        # Initialize the logger
+        log_path = 'training_logs/dqn_log_' + time.strftime("%y%m%d_%H%M%S") + '.txt' if log_path is None else log_path
+        logger = DQNLogger(log_path, self.label, verbose=verbose)
+        if self.logger is None:
+            self.logger = logger
+        logger.log_info(f"Training {self.label} for {self.env.unwrapped.spec.id}...")
 
         for i_episode in range(episodes):
             if (i_episode + 1) % (episodes / 10) == 0:
-                print("episode ", i_episode + 1, "of max", episodes)
+                logger.log_info(f"episode {i_episode + 1} of max {episodes}")
 
             observation, _ = self.env.reset()
             state = torch.tensor(observation).float()
@@ -101,11 +112,7 @@ class Agent:
 
             while not (done or terminated):
                 # Select and perform an action
-                # action = np.array(self.epsilon_greedy(epsilon, self.policy_dqn, state), dtype=np.float32)
                 action = self.epsilon_greedy(epsilon, self.policy_dqn, state)
-
-                print(action)
-                print(type(action))
 
                 observation, reward, done, terminated, _ = self.env.step(action)
                 episode_reward += reward
@@ -145,13 +152,11 @@ class Agent:
                     episode_durations.append(t + 1)
                     episode_rewards.append(episode_reward)
                     scores_window.append(episode_reward)
-                    # print(np.mean(scores_window))
+
                     if delay_decay and episode_reward > 0:
                         delay_decay = False
-                        print(
-                            f"Received positive reward at episode {i_episode}.",
-                            "Will begin epsilon decay now",
-                        )
+                        logger.log_info(
+                            f"Received positive reward at episode {i_episode}.Will begin epsilon decay now")
 
                 t += 1
 
@@ -160,9 +165,10 @@ class Agent:
                 self.update_target()
 
             # Check if solved threshold has been reached
-            if np.mean(scores_window) >= self.threshold:
-                print(f"Environment solved within {i_episode + 1} episodes.")
-                print(f"Average Score: {np.mean(scores_window)}")
+            # Solved threshold is the average of the last 100 episodes rewards and that the last episode is a success
+            if torch.mean(torch.tensor(scores_window)) >= self.threshold and episode_reward >= self.threshold:
+                logger.log_info(f"Environment solved within {i_episode + 1} episodes.")
+                logger.log_info(f"Average Score: {torch.mean(torch.tensor(scores_window)): .2f}")
                 break
 
             # Update epsilon
@@ -170,10 +176,9 @@ class Agent:
                 epsilon *= eps_decay
                 epsilon = max(epsilon_end, epsilon)
 
-        print("Training is complete")
-        if show_time:
-            endt = time.time()
-            self.print_time(strt, endt)
+        logger.log_info("Training is complete")
+        endt = time.time()
+        logger.log_info(get_time(strt, endt, "Total Training Time: "))
 
         self.training_dict = dict(
             episode_durations=episode_durations, episode_rewards=episode_rewards
@@ -199,14 +204,19 @@ class Agent:
         # Set save_every so that it is not a divisor for any number in range(episodes)
         if save_every is None:
             save_every = episodes + 2
-        print("Evaluating Trained Agent...")
+
+        # Initialize the logger if it is not already initialized
+        if self.logger is None:
+            self.logger = DQNLogger(None, self.label, verbose=False)
+
+        self.logger.log_info("Evaluating Trained Agent...")
 
         # Turn off train mode
         self.policy_dqn.eval()
 
         for i_episode in range(episodes):
             if (i_episode + 1) % (episodes / 10) == 0:
-                print("episode ", i_episode + 1, "of", episodes)
+                self.logger.log_info(f"Evaluation Episode {i_episode + 1} of {episodes}")
 
             observation, _ = self.env.reset()
             state = torch.tensor(observation).float()
@@ -233,139 +243,20 @@ class Agent:
                 if done or terminated:
                     episode_durations.append(t + 1)
                     episode_rewards.append(episode_reward)
-                    print(f"Episode {i_episode + 1} with reward {episode_reward}")
-                    print(f"{t + 1} steps")
+                    self.logger.log_info(f"Episode {i_episode + 1} with reward {episode_reward:.2f}")
+                    self.logger.log_info(f"{t + 1} steps")
 
                     if ((i_episode + 1) % save_every) == 0:
-                        self.save_render(frames, i_episode, nb_render=nb_render)
+                        save_render(self.env, frames, i_episode, nb_render=nb_render)
 
                 t += 1
         if plots:
-            self.plot_episodes(episode_rewards)
+            plot_episodes(episode_rewards, title=f"Evaluation of {self.label} for {self.env.unwrapped.spec.id}",
+                          threshold=self.threshold)
 
         return dict(
             episode_durations=episode_durations, episode_rewards=episode_rewards
         )
-
-    def save_random_renders(
-        self, episodes=1, plots=False, save_every=1, nb_render=True
-    ):
-        """Evaluates performance of Trained Agent over a number of episodes
-        Args:
-            episodes(int): Number of episodes the train agent carries out
-            plots (bool): Plots the score curve for the episodes if true
-            save_every(int or None): x s.t. the rendering gif is saved every x episodes. So 10 means every 10th
-            rendering is saved. If it is None, no rendering is saved
-            nb_render(bool): Passed on to the save_render function
-
-        Returns:
-            dict: Dictionary with episode rewards and durations
-        """
-
-        episode_durations = []
-        episode_rewards = []
-
-        # Set save_every so that it is not a divisor for any number in range(episodes)
-        if save_every is None:
-            save_every = episodes + 2
-        print("saving a random render")
-
-        # Turn off train mode
-        # self.policy_dqn.eval()
-
-        for i_episode in range(episodes):
-            if (i_episode + 1) % (episodes / 10) == 0:
-                print("episode ", i_episode + 1, "of", episodes)
-
-            self.env.reset()
-
-            done = False
-            terminated = False
-            t = 0
-            episode_reward = 0
-            frames = []
-
-            while not (done or terminated):
-                frames.append(self.env.render())
-
-                # Select and perform a random action
-                action = self.env.action_space.sample()
-
-                _, reward, done, terminated, _ = self.env.step(action)
-                episode_reward += reward
-                # next_state = torch.tensor(observation).reshape(-1).float()
-
-                # Move to the next state
-                # state = next_state
-
-                if done or terminated:
-                    episode_durations.append(t + 1)
-                    episode_rewards.append(episode_reward)
-                    print(
-                        f"Random episode {i_episode + 1} with reward {episode_reward}"
-                    )
-                    print(f"{t + 1} steps")
-
-                    if ((i_episode + 1) % save_every) == 0:
-                        self.save_render(
-                            frames, i_episode, mode="rand", nb_render=nb_render
-                        )
-
-                t += 1
-        if plots:
-            self.plot_episodes(episode_rewards)
-
-        return None
-
-    def save_render(self, frames, i_episode, mode="eval", nb_render=False):
-        """
-        Saves the rendering as a gif
-        Args:
-            frames (list(images)): list of image frames saved from rendering
-            i_episode (int): the current episode of learning
-            mode (str): where in 'eval' (evaluating trained agent), 'random'(evaluating untrained agent) or 'training' (saving renderings of an agent in training) mode
-            nb_render (bool): if True, indicates that the rendering is for an ipynb and is saved without a timestamp.
-
-        Returns:
-            None
-
-        """
-        folder_name = "images/" + self.env.unwrapped.spec.id
-        self.check_path_exists(folder_name)
-
-        if mode == "eval":
-            mode = "evaluation_"
-        elif mode == "rand":
-            mode = "random_"
-        else:
-            mode = "training_"
-
-        if nb_render:
-            imageio.mimsave(str(folder_name) + "/" + mode[:-1] + ".gif", frames, fps=15)
-
-        else:
-            imageio.mimsave(
-                str(folder_name)
-                + "/"
-                + mode
-                + str(i_episode + 1)
-                + "_"
-                + time.strftime("%y%m%d_%H%M")
-                + ".gif",
-                frames,
-                fps=15,
-            )
-
-        pass
-
-    @staticmethod
-    def check_path_exists(path):
-        """Checks whether the specified path exists and creates it if not"""
-        dir_exist = os.path.exists(path)
-        if not dir_exist:
-            # Create a new directory because it does not exist
-            os.makedirs(path)
-            print(f"The new directory, {path}, has been created!")
 
     def update_target(self):
         """Update target network parameters using policy network.
@@ -439,43 +330,6 @@ class Agent:
             return b
         else:
             return reward
-
-    def plot_episodes(self, episode_stats):
-        rewards = torch.tensor(episode_stats)
-        means = rewards.float()
-        # stds = rewards.float().std(0)
-
-        plt.plot(torch.arange(len(means)), means, label=self.label, color="g")
-        plt.ylabel("score")
-        plt.xlabel("episode")
-        # plt.fill_between(np.arange(episodes), means, means + stds, alpha=0.3, color='g')
-        # plt.fill_between(np.arange(episodes), means, means - stds, alpha=0.3, color='g')
-        plt.axhline(
-            y=self.threshold, color="r", linestyle="dashed", label="Solved Threshold"
-        )
-        plt.legend()
-        plt.show()
-
-    @staticmethod
-    def print_time(strt, endt):
-        """Calculates time difference and prints the execution time in hours, minutes and seconds
-
-        Args:
-            strt(float): the start time
-            endt(float): the end time
-        """
-        # get the execution time
-        elapsed_ = endt - strt
-        hours = elapsed_ // (60 * 60)
-        minutes = (elapsed_ % (60 * 60)) // 60
-        seconds = elapsed_ % 60
-        str_time = ""
-        if hours > 0:
-            str_time += str(hours) + " hours, "
-        if minutes > 0:
-            str_time += str(minutes) + " minutes, "
-        str_time += str(seconds) + " seconds."
-        print("Execution time: " + str_time)
 
 
 class DDQNAgent(Agent):
@@ -562,7 +416,7 @@ def dqn_example(gym_env):
     )
 
     run_stats = dqn_agent.train_agent(show_time=True, **training_params)
-    dqn_agent.plot_episodes(run_stats["episode_rewards"])
+    plot_episodes(run_stats["episode_rewards"], "DQN Agent", dqn_agent.threshold)
 
 
 def ddqn_example(gym_env):
@@ -609,10 +463,9 @@ def ddqn_example(gym_env):
     )
 
     run_stats = ddqn_agent.train_agent(show_time=True, **training_params)
-    ddqn_agent.plot_episodes(run_stats["episode_rewards"])
+    plot_episodes(run_stats["episode_rewards"], "DDQN Agent", ddqn_agent.threshold)
 
 
 if __name__ == "__main__":
     env = gym.make("LunarLander-v2", render_mode="rgb_array")
     dqn_example(gym_env=env)
-    # ddqn_example(gym_env=env)

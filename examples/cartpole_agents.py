@@ -1,6 +1,6 @@
 from agent_utils import Agent
+from utils.plot_utils import plot_episodes
 import gym
-
 
 if __name__ == "__main__":
     env = gym.make("CartPole-v1", render_mode="rgb_array")
@@ -46,5 +46,6 @@ if __name__ == "__main__":
     )
 
     run_stats = dqn_agent.train_agent(show_time=True, **training_params)
-    dqn_agent.plot_episodes(run_stats["episode_rewards"])
+    plt_title = f"Training of {dqn_agent.label} for {dqn_agent.env.unwrapped.spec.id}"
+    plot_episodes(run_stats["episode_rewards"], title=plt_title, threshold=dqn_agent.threshold)
     dqn_agent.evaluate_agent(10, plots=True, save_every=10)

@@ -13,7 +13,7 @@ if __name__ == "__main__":
     activation = "relu"
     weights = "xunif"
     optim = "Adam"
-    learning_rate = 1e-4
+    learning_rate = 1e-3
     dqn_params = dict(
         layers=layers,
         activation=activation,
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     replay_buffer = 100000
     batch_size = 64
     epsilon_end = 0.01
-    episodes = 1000
+    episodes = 100
     update_frequency = 5
     clip_rewards = False
 
@@ -43,6 +43,8 @@ if __name__ == "__main__":
         dqn_params=dqn_params,
         clip_rewards=clip_rewards,
     )
+
+    print("Episodes: ", training_params["episodes"])
 
     # TODO: Fix action space bug
     run_stats = dqn_agent.train_agent(show_time=True, **training_params)
