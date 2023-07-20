@@ -33,8 +33,8 @@ python examples/lunar_agents.py
 The agent is able to learn the environment going from a random policy (left) to a policy that is able to land the Lander on the landing pad (right).
 
 <p align="center">
-  <img src="./images/lunarlander-v2/random.gif" alt="Random Policy" width="300"/>
-  <img src="./images/lunarlander-v2/evaluation.gif" alt="Trained Policy" width="300"/>
+  <img src="./images/LunarLander-v2/random.gif" alt="Random Policy" width="300"/>
+  <img src="./images/LunarLander-v2/evaluation.gif" alt="Trained Policy" width="300"/>
 
 ![Random Policy](./images/lunarlander-v2/random.gif)
 
@@ -45,8 +45,8 @@ python examples/cartpole_agents.py
 The agent is able to the LunarLander V2 (environment details can be found [here](https://gymnasium.farama.org/environments/box2d/lunar_lander/)) going from a random policy to a policy that is able to land the LunarLander on the landing pad -see the GIFs below.
 
 <p align="center">
-  <img src="./images/cartpole-v1/random.gif" alt="Random Policy" width="300"/>
-  <img src="./images/cartpole-v1/evaluations.gif" alt="Trained Policy" width="300"/>
+  <img src="./images/CartPole-v1/random.gif" alt="Random Policy" width="300"/>
+  <img src="./images/CartPole-v1/evaluations.gif" alt="Trained Policy" width="300"/>
 
 Please note that the agent doesn't work with environments that have continuous action spaces. It also doesn't work on the MountainCar-v0 environment, as the agent is not able to learn a good policy for these environments.
 ## Project Structure
