@@ -1,4 +1,6 @@
-from agent_utils import *
+from agent_utils import Agent
+from utils.plot_utils import plot_episodes
+import gym
 
 if __name__ == "__main__":
     env = gym.make("LunarLander-v2", render_mode="rgb_array")
@@ -13,7 +15,7 @@ if __name__ == "__main__":
     activation = "relu"
     weights = "xunif"
     optim = "Adam"
-    learning_rate = 5e-4
+    learning_rate = 1e-3
     dqn_params = dict(
         layers=layers,
         activation=activation,
@@ -32,6 +34,7 @@ if __name__ == "__main__":
     update_frequency = 5
     clip_rewards = False
     gamma = 1
+    verbose = True
 
     training_params = dict(
         epsilon=epsilon,
@@ -44,8 +47,10 @@ if __name__ == "__main__":
         dqn_params=dqn_params,
         clip_rewards=clip_rewards,
         gamma=gamma,
+        verbose=verbose,
     )
 
     run_stats = dqn_agent.train_agent(show_time=True, **training_params)
-    dqn_agent.plot_episodes(run_stats["episode_rewards"])
+    plt_title = f"Training of {dqn_agent.label} for {dqn_agent.env.unwrapped.spec.id}"
+    plot_episodes(run_stats["episode_rewards"], title=plt_title, threshold=dqn_agent.threshold)
     dqn_agent.evaluate_agent(10, plots=True, save_every=10)
