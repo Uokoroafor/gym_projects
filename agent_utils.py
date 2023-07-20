@@ -5,6 +5,7 @@ from typing import Optional, Dict
 
 import gym
 import torch
+from torch import nn
 from dqn import DQN
 from replaybuffer import ReplayBuffer
 from utils.logging_utils import DQNLogger, get_time
@@ -185,14 +186,13 @@ class Agent:
         )
         return self.training_dict
 
-    def evaluate_agent(self, episodes, plots=True, save_every=None, nb_render=False):
+    def evaluate_agent(self, episodes: int, plots: Optional[bool]=True, save_every: Optional[int]=None, nb_render: Optional[bool]=False):
         """Evaluates performance of Trained Agent over a number of episodes
         Args:
-            episodes(int): Number of episodes the train agent carries out
-            plots (bool): Plots the score curve for the episodes if true
-            save_every(int or None): x s.t. the rendering gif is saved every x episodes. So 10 means every 10th
-            rendering is saved. If it is None, no rendering is saved
-            nb_render(bool): Passed on to the save_render function
+            episodes (int): Number of episodes to evaluate the agent
+            plots (Optional[bool], optional): Whether to plot the rewards and durations. Defaults to True.
+            save_every (Optional[int], optional): Save the agent every save_every episodes. Defaults to None.
+            nb_render (Optional[bool], optional): Whether to render the environment. Defaults to False.
 
         Returns:
             dict: Dictionary with episode rewards and durations
@@ -268,28 +268,28 @@ class Agent:
         self.target_dqn.load_state_dict(self.policy_dqn.state_dict())
 
     @staticmethod
-    def greedy_action(dqn, state):
+    def greedy_action(dqn: nn.Module, state: torch.Tensor) -> int:
         """Select action according to a given DQN
 
         Args:
-            dqn: the DQN that selects the action
-            state: state at which the action is chosen
+            dqn (nn.Module): the DQN that estimates the action values
+            state (torch.Tensor): state at which the action is chosen
 
         Returns:
-            Greedy action according to DQN
+            int: greedy action
         """
         return int(torch.argmax(dqn(state)))
 
-    def epsilon_greedy(self, epsilon, dqn, state):
+    def epsilon_greedy(self, epsilon: float, dqn: nn.Module, state: torch.Tensor) -> int:
         """Sample an epsilon-greedy action according to a given DQN
 
         Args:
-            epsilon: parameter for epsilon-greedy action selection
-            dqn: the DQN that selects the action
-            state: state at which the action is chosen
+            epsilon (float): epsilon value
+            dqn (nn.Module): the DQN that estimates the action values
+            state (torch.Tensor): state at which the action is chosen
 
         Returns:
-            epsilon-greedy action
+            int: epsilon-greedy action
         """
         q_values = dqn(state)
         num_actions = q_values.shape[0]
@@ -299,7 +299,7 @@ class Agent:
         else:
             return random.randint(0, num_actions - 1)
 
-    def loss(self, states, actions, rewards, next_states, dones, gamma):
+    def loss(self, states: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor, next_states: torch.Tensor, dones: torch.Tensor, gamma: float) -> float:
         """Calculate Bellman error loss
 
         Args:
@@ -323,7 +323,17 @@ class Agent:
         return ((q_values - bellman_targets) ** 2).mean()
 
     @staticmethod
-    def clip_reward(reward, a=-1, b=1):
+    def clip_reward(reward: float, a: float, b: float) -> float:
+        """Clip reward to be in the range [a, b]
+
+        Args:
+            reward (float): reward to be clipped
+            a (float): lower bound
+            b (float): upper bound
+
+        Returns:
+            float: clipped reward
+        """
         if reward < a:
             return a
         elif reward > b:
@@ -333,18 +343,18 @@ class Agent:
 
 
 class DDQNAgent(Agent):
-    def __init__(self, env, reward_threshold=None):
+    def __init__(self, env: gym.Env, reward_threshold: Optional[float] = None):
         """Initialize the DDQN Agent
 
         Args:
             env (gym.env): Gym environment
-            reward_threshold (float): Reward threshold for the environment
+            reward_threshold (float, optional): Reward threshold for the environment. Defaults to None.
         """
 
         super().__init__(env=env, reward_threshold=reward_threshold)
         self.label = "DDQN Agent"
 
-    def loss(self, states, actions, rewards, next_states, dones, gamma):
+    def loss(self, states: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor, next_states: torch.Tensor, dones: torch.Tensor, gamma: float) -> float:
         """Calculate Bellman error loss
 
         Args:
@@ -354,8 +364,6 @@ class DDQNAgent(Agent):
             next_states (torch.tensor): Tensor of batched next_states
             dones (torch.tensor): Tensor of batched bools, True when episode terminates
             gamma (float): Discount rate
-
-
         Returns:
             Float: scalar tensor with the loss value
         """
@@ -373,7 +381,7 @@ class DDQNAgent(Agent):
         return ((q_values - bellman_targets) ** 2).mean()
 
 
-def dqn_example(gym_env):
+def dqn_example(gym_env: gym.Env):
     dqn_agent = Agent(gym_env)
 
     input_size = gym_env.observation_space.shape[0]
@@ -419,7 +427,7 @@ def dqn_example(gym_env):
     plot_episodes(run_stats["episode_rewards"], "DQN Agent", dqn_agent.threshold)
 
 
-def ddqn_example(gym_env):
+def ddqn_example(gym_env: gym.Env):
     """Example of how to use the DDQN Agent to solve an environment"""
     ddqn_agent = DDQNAgent(gym_env)
 

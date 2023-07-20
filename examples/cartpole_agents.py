@@ -32,6 +32,7 @@ if __name__ == "__main__":
     episodes = 1000
     update_frequency = 5
     clip_rewards = False
+    verbose = True
 
     training_params = dict(
         epsilon=epsilon,
@@ -43,6 +44,7 @@ if __name__ == "__main__":
         update_frequency=update_frequency,
         dqn_params=dqn_params,
         clip_rewards=clip_rewards,
+        verbose=verbose,
     )
 
     run_stats = dqn_agent.train_agent(show_time=True, **training_params)
