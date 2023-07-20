@@ -29,16 +29,16 @@ class DQN(nn.Module):
         self.learning_rate = learning_rate
 
         # Set Activation Function
-        self.activation = self.set_activation(activation)
+        self.activation = self.set_activation(activation.lower())
 
         # Make weights initialisation method
-        self.weights_init = self.set_weights_init(weights)
+        self.weights_init = self.set_weights_init(weights.lower())
 
         # Apply Layers
         self.nn_model = self.apply_layers()
 
         # Set optimisation function
-        self.optim = self.set_optimizer(optim)
+        self.optim = self.set_optimizer(optim.lower())
 
     @staticmethod
     def set_activation(activation: str) -> nn.Module:
@@ -94,11 +94,11 @@ class DQN(nn.Module):
             torch.optim: Optimisation function.
         """
 
-        if optim == "Adam":
+        if optim == "adam":
             optim_fn = Adam
-        elif optim == "SGD":
+        elif optim == "sgd":
             optim_fn = SGD
-        elif optim == "Adagrad":
+        elif optim == "adagrad":
             optim_fn = Adagrad
         else:
             print("No known optimiser provided. Using Adam.")
