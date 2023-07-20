@@ -87,7 +87,7 @@ def save_render(gym_env: Env, frames: List[Image], i_episode: int, mode: Optiona
         None
 
     """
-    folder_name = "../images/" + gym_env.unwrapped.spec.id
+    folder_name = "./images/" + gym_env.unwrapped.spec.id
     check_path_exists(folder_name)
 
     if mode == "eval":
