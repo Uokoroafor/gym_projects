@@ -130,7 +130,7 @@ The agent is able to learn the environment going from a random policy (left) to 
 <img src="./images/CartPole-v1/random.gif" alt="Random Policy" width="300"/>
 
 #### Trained Policy
-<img src="./images/CartPole-v1/random.gif" alt="Trained Policy" width="300"/>
+<img src="./images/CartPole-v1/evaluation.gif" alt="Trained Policy" width="300"/>
 <!--
 <p align="center">
   <img src="./images/CartPole-v1/random.gif" alt="Random Policy" width="300"/>
