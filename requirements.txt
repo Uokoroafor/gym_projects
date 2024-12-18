@@ -2,7 +2,7 @@ numpy==1.25.1
 torch==2.2.0
 pandas==2.0.3
 matplotlib==3.7.2
-scikit-learn==1.1.2
+scikit-learn==1.5.0
 gym>=0.26.2
 envs>=1.4
 pygame>=2.1.2
